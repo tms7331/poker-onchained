@@ -79,6 +79,10 @@ contract PokerTable is PokerLogic {
         // TODO - add assertions for min/max buyins
         minBuyin = _minBuyin;
         maxBuyin = _maxBuyin;
+        require(
+            _numSeats == 2 || _numSeats == 6 || _numSeats == 9,
+            "Invalid number of seats!"
+        );
         numSeats = _numSeats;
 
         // plrActionAddr = new address[](_numSeats);
@@ -97,7 +101,7 @@ contract PokerTable is PokerLogic {
         uint depositAmount
     ) internal view returns (bool) {
         // As long as deposit keeps player's stack in range [minBuyin, maxBuyin] it's ok
-        uint stackNew = stackCurr = depositAmount;
+        uint stackNew = stackCurr + depositAmount;
         return stackNew >= minBuyin && stackNew <= maxBuyin;
     }
 
@@ -107,29 +111,18 @@ contract PokerTable is PokerLogic {
         uint depositAmount,
         bool autoPost
     ) external {
-        // TODOTODO - check these...
-        // assert 0 <= seat_i <= self.num_seats - 1, "Invalid seat_i!"
-        //   assert self.seats[seat_i] == None, "seat_i taken!"
-        //   assert address not in self.player_to_seat, "Player already joined!"
-        //   assert (
-        //       self.min_buyin <= deposit_amount <= self.max_buyin
-        //   ), "Invalid deposit amount!"
-
         require(seatI >= 0 && seatI < numSeats, "Invalid seat!");
+        // TODO - think through edge cases if they join with address of 0, maybe it's ok
+        require(actionAddr != address(0), "Invalid action address!");
 
         // Make sure it's ok for them to join (seat available)
-        require(plrActionAddr[seatI] == address(0));
-        // Prevent player from joining multiple times - more efficient way to do this?
-        // TODO - reenable this, have to figure out play...
+        require(plrActionAddr[seatI] == address(0), "Seat already taken!");
 
+        // Prevent player from joining multiple times
+        // we could store a mapping of players, is it worth it?
         for (uint256 i = 0; i < numSeats; i++) {
             require(plrOwnerAddr[i] != msg.sender, "Player already joined!");
         }
-
-        require(
-            depositAmount >= minBuyin && depositAmount <= maxBuyin,
-            "Invalid deposit amount!"
-        );
 
         // Make sure their deposit amount is in bounds
         require(_depositOk(0, depositAmount));
@@ -174,14 +167,8 @@ contract PokerTable is PokerLogic {
 
     function rebuy(uint256 seatI, uint256 rebuyAmount) public {
         require(plrOwnerAddr[seatI] == msg.sender, "Player not at seat!");
-        uint stack = plrStack[seatI];
-        uint256 newStack = stack + rebuyAmount;
-        require(
-            newStack >= minBuyin && newStack <= maxBuyin,
-            "Invalid rebuy amount!"
-        );
-
-        plrStack[seatI] = newStack;
+        require(_depositOk(plrStack[seatI], rebuyAmount));
+        plrStack[seatI] += rebuyAmount;
     }
 
     function getPlayerCount() internal view returns (uint256) {
