@@ -2,29 +2,35 @@
 pragma solidity ^0.8.24;
 import "forge-std/console.sol";
 import {PokerLogic} from "./PokerLogic.sol";
+import {CardDealer} from "./CardDealer.sol";
 
 contract PokerTable is PokerLogic {
     // Core table values...
     uint public tableId;
+    uint public handId;
+
     uint public smallBlind;
     uint public bigBlind;
     uint public minBuyin;
     uint public maxBuyin;
     uint public numSeats;
 
-    uint public handId;
-
     // Player data we need:
     address[9] public plrActionAddr;
     address[9] public plrOwnerAddr;
     uint[9] public plrStack;
     bool[9] public plrInHand;
+    bool[9] public plrSittingOut;
     bool[9] public plrAutoPost;
     uint[9] public plrBetStreet;
     uint[9] public plrShowdownVal;
     ActionType[9] public plrLastActionType;
     uint[9] public plrLastAmount;
-    uint[9] public plrHolecards;
+    // Temporary solution - holecards fully public until we integrate coprocessor
+    uint[9] public plrHolecardsA;
+    uint[9] public plrHolecardsB;
+    // Temporary solution - holecards fully public until we integrate coprocessor
+    CardDealer public cardDealer;
 
     // Table data we need:
     HandStage public handStage;
@@ -84,7 +90,7 @@ contract PokerTable is PokerLogic {
             "Invalid number of seats!"
         );
         numSeats = _numSeats;
-
+        cardDealer = new CardDealer();
         // plrActionAddr = new address[](_numSeats);
         // plrOwnerAddr = new address[](_numSeats);
         // plrStack = new uint[](_numSeats);
@@ -114,23 +120,19 @@ contract PokerTable is PokerLogic {
         require(seatI >= 0 && seatI < numSeats, "Invalid seat!");
         // TODO - think through edge cases if they join with address of 0, maybe it's ok
         require(actionAddr != address(0), "Invalid action address!");
-
-        // Make sure it's ok for them to join (seat available)
+        // Seat must be available and player must not be already joined
         require(plrActionAddr[seatI] == address(0), "Seat already taken!");
-
-        // Prevent player from joining multiple times
-        // we could store a mapping of players, is it worth it?
+        // we could store a mapping of players for O(1) instead, is it worth it?
         for (uint256 i = 0; i < numSeats; i++) {
             require(plrOwnerAddr[i] != msg.sender, "Player already joined!");
         }
-
-        // Make sure their deposit amount is in bounds
         require(_depositOk(0, depositAmount));
 
         plrActionAddr[seatI] = actionAddr;
         plrOwnerAddr[seatI] = msg.sender;
         plrStack[seatI] = depositAmount;
-        plrHolecards[seatI] = 53;
+        plrHolecardsA[seatI] = 53;
+        plrHolecardsB[seatI] = 53;
         plrAutoPost[seatI] = autoPost;
         plrBetStreet[seatI] = 0;
         plrShowdownVal[seatI] = 0;
@@ -144,6 +146,7 @@ contract PokerTable is PokerLogic {
         // } else {
         //     _setPlrInHand(plrDataId, true);
         // }
+        plrInHand[seatI] = true;
 
         // // Assign button if it's the first player
         // if (getPlayerCount() == 1) {
@@ -322,7 +325,8 @@ contract PokerTable is PokerLogic {
         // Reset players
         for (uint i = 0; i < numSeats; i++) {
             if (plrActionAddr[i] != address(0)) {
-                plrHolecards[i] = 53;
+                plrHolecardsA[i] = 53;
+                plrHolecardsB[i] = 53;
                 plrInHand[i] = true;
                 plrLastActionType[i] = ActionType.Null;
                 plrLastAmount[i] = 0;
