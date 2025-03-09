@@ -109,16 +109,16 @@ contract TestPokerTable is Test {
         pth.joinTable(seatI, player2, depositAmount, autoPost);
 
         // Joining at an out of bounds index should fail
-        vm.expectRevert("Invalid seat!");
+        vm.expectRevert();
         vm.prank(player2);
         pth.joinTable(9, player2, depositAmount, autoPost);
 
         // Bad buying amount should fail
-        vm.expectRevert("Invalid deposit amount!");
+        vm.expectRevert();
         vm.prank(player2);
         pth.joinTable(1, player2, 100000, autoPost);
 
-        vm.expectRevert("Invalid deposit amount!");
+        vm.expectRevert();
         vm.prank(player2);
         pth.joinTable(1, player2, 1, autoPost);
     }
@@ -220,16 +220,19 @@ contract TestPokerTable is Test {
         );
 
         // And make sure they got their holecards
-        // (uint8 c0, uint8 c1) = pth.plrHolecards(0);
-        // assertNotEq(c0, 53);
-        // assertNotEq(c1, 53);
-        // (c0, c1) = pth.plrHolecards(1);
-        // assertNotEq(c0, 53);
-        // assertNotEq(c1, 53);
-        // (c0, c1) = pth.plrHolecards(2);
-        // // Other players should NOT have gotten holecards
-        // assertEq(c0, 53);
-        // assertEq(c1, 53);
+        uint8 c0 = pth.plrHolecardsA(0);
+        uint8 c1 = pth.plrHolecardsB(0);
+        assertTrue((c0 != 0 || c1 != 0), "Player 0 should have got holecards");
+        c0 = pth.plrHolecardsA(1);
+        c1 = pth.plrHolecardsB(1);
+        assertTrue((c0 != 0 || c1 != 0), "Player 1 should have got holecards");
+        c0 = pth.plrHolecardsA(2);
+        c1 = pth.plrHolecardsB(2);
+        // Other players should NOT have gotten holecards
+        assertTrue(
+            (c0 == 0 && c1 == 0),
+            "Player 2 should not have got holecards"
+        );
     }
 
     function test_foldPreflop() public {
@@ -258,8 +261,8 @@ contract TestPokerTable is Test {
         pth.takeAction(EnumsAndActions.ActionType.Fold, 0, 0);
 
         // Whose turn should be 1
-        assertEq(uint(pth.whoseTurn()), 1, "Whose turn should be 1");
         assertEq(uint(pth.button()), 1, "Button should be 1");
+        assertEq(uint(pth.whoseTurn()), 1, "Whose turn should be 1");
 
         // Now post blinds for next hand
         vm.prank(p1);

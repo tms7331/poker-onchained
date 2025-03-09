@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 import {EnumsAndActions} from "./EnumsAndActions.sol";
+import "forge-std/console.sol";
 
 contract PokerLogic is EnumsAndActions {
     function _transitionHandState(
@@ -178,9 +179,6 @@ contract PokerLogic is EnumsAndActions {
             }
         }
 
-        // uint potAmount = _getTblPotInitial(tblDataId);
-
-        // uint numPots = _getNumPots(tblDataId);
         uint numPots = pots.length;
         for (uint256 i = 0; i < numPots; i++) {
             Pot memory pot = pots[i];
@@ -195,9 +193,6 @@ contract PokerLogic is EnumsAndActions {
         mainPot.players = streetPlayers;
         mainPot.amount = potAmount;
 
-        // uint potI = _getNumPots(tblDataId);
-        // _setTblPotsComplete(plrDataIdArr[potI], mainPot);
-        // _setNumPots(tblDataId, potI + 1);
         return mainPot;
     }
 
@@ -208,74 +203,50 @@ contract PokerLogic is EnumsAndActions {
         int closingActionCount
     ) internal pure returns (uint8, int) {
         uint8 numSeats = uint8(inHand.length);
-        bool incremented = false;
-        // uint8 whoseTurn = _getTblWhoseTurn(tblDataId);
-        // int closingActionCount = _getTblClosingActionCount(tblDataId);
-        uint8 newWhoseTurn;
-
+        // bool incremented = false;
         for (uint256 i = 1; i <= numSeats; i++) {
-            // Want to go around the table in order, starting from
-            // whoever's turn it is
+            // Go around the table in order, starting from whoever's turn it is
             uint256 seatI = (whoseTurn + i) % numSeats;
-            // Suave.DataId plrDataId = plrDataIdArr[seatI];
             closingActionCount++;
-
-            // if (_getPlrAddr(plrDataId) == address(0)) {
-            //     continue;
-            // }
 
             // The player must be in the hand and have some funds
             if (inHand[seatI] && stacks[seatI] > 0) {
                 whoseTurn = uint8(seatI);
-                incremented = true;
+                // incremented = true;
                 break;
             }
         }
 
-        // _setTblClosingActionCount(tblDataId, closingActionCount);
-        // Optionally assert checks for debugging
-        // require(closingActionCount <= (numSeats + 1), "Too high closingActionCount!");
-
+        // TODO - think it's possible to not increment if we have one player - make sure
         // require(incremented, "Failed to increment whoseTurn!");
-        return (newWhoseTurn, closingActionCount);
+        // TODO - is this a valid check?
+        // require(closingActionCount <= (numSeats + 1), "Too high closingActionCount!");
+        return (whoseTurn, closingActionCount);
     }
 
     function _incrementButton(
         uint8 button,
-        bool[9] memory inHand,
+        bool[9] memory plrSittingOut,
         uint[9] memory stacks
     ) internal pure returns (uint8) {
-        // Count active players
-        uint256 activePlayers = 0;
-        uint8 newButton;
-        uint8 numSeats = uint8(inHand.length);
-        for (uint256 i = 0; i < numSeats; i++) {
-            // Suave.DataId plrDataId = plrDataIdArr[i];
-            bool cond1 = inHand[i];
-            bool cond2 = stacks[i] > 0;
-            uint cond1u = cond1 ? 1 : 0;
-            uint cond2u = cond2 ? 1 : 0;
-            activePlayers += cond1u + cond2u;
-            // if (
-            //     _getPlrAddr(plrDataId) != address(0) &&
-            //     _getPlrSittingOut(plrDataId) == false
-            // ) {
-            //     activePlayers++;
-            // }
-        }
+        // TODO - what if there's only one player?
+        // We'll iterate through seats and never break...
+        uint8 numSeats = uint8(plrSittingOut.length);
 
-        // Ensure at least two active players before moving the button
-        if (activePlayers >= 2) {
-            while (true) {
-                newButton = (button + 1) % uint8(numSeats);
-                // _setTblButton(tblDataId, newButton);
-                // Suave.DataId plrDataId = plrDataIdArr[newButton];
-                // address addr = _getPlrAddr(plrDataId);
-                if (inHand[newButton] && stacks[newButton] > 0) {
-                    break;
-                }
+        bool incremented = false;
+        for (uint256 i = 1; i <= numSeats; i++) {
+            uint256 seatI = (button + i) % numSeats;
+            // The player must be active and have some funds
+            if (!plrSittingOut[seatI] && stacks[seatI] > 0) {
+                button = uint8(seatI);
+                incremented = true;
+                break;
             }
         }
-        return newButton;
+        // Sanity check - we can handle this case but don't let it happen
+        // without thinking through it
+        require(incremented, "Failed to increment button!");
+
+        return button;
     }
 }

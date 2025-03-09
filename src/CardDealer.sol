@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
-import "forge-std/console.sol";
 
 contract CardDealer {
     mapping(uint => bool) public dealtCards;

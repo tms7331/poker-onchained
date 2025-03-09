@@ -27,10 +27,15 @@ contract PokerTable is PokerLogic {
     ActionType[9] public plrLastActionType;
     uint[9] public plrLastAmount;
     // Temporary solution - holecards fully public until we integrate coprocessor
-    uint[9] public plrHolecardsA;
-    uint[9] public plrHolecardsB;
+    uint8[9] public plrHolecardsA;
+    uint8[9] public plrHolecardsB;
     // Temporary solution - holecards fully public until we integrate coprocessor
     CardDealer public cardDealer;
+    uint8 public flop0;
+    uint8 public flop1;
+    uint8 public flop2;
+    uint8 public turn;
+    uint8 public river;
 
     // Table data we need:
     HandStage public handStage;
@@ -91,15 +96,6 @@ contract PokerTable is PokerLogic {
         );
         numSeats = _numSeats;
         cardDealer = new CardDealer();
-        // plrActionAddr = new address[](_numSeats);
-        // plrOwnerAddr = new address[](_numSeats);
-        // plrStack = new uint[](_numSeats);
-        // plrInHand = new bool[](_numSeats);
-        // plrBetStreet = new uint[](_numSeats);
-        // plrShowdownVal = new uint[](_numSeats);
-        // plrLastActionType = new ActionType[](_numSeats);
-        // plrLastAmount = new uint[](_numSeats);
-        // plrHolecards = new uint[](_numSeats);
     }
 
     function _depositOk(
@@ -131,8 +127,8 @@ contract PokerTable is PokerLogic {
         plrActionAddr[seatI] = actionAddr;
         plrOwnerAddr[seatI] = msg.sender;
         plrStack[seatI] = depositAmount;
-        plrHolecardsA[seatI] = 53;
-        plrHolecardsB[seatI] = 53;
+        plrHolecardsA[seatI] = 0;
+        plrHolecardsB[seatI] = 0;
         plrAutoPost[seatI] = autoPost;
         plrBetStreet[seatI] = 0;
         plrShowdownVal[seatI] = 0;
@@ -141,18 +137,17 @@ contract PokerTable is PokerLogic {
 
         // TODO - need to initialize whoseTurn and button properly
         // HandStage handStage = _getTblHandStage(tblDataId);
-        // if (handStage != HandStage.SBPostStage) {
-        //     _setPlrInHand(plrDataId, false);
-        // } else {
-        //     _setPlrInHand(plrDataId, true);
-        // }
-        plrInHand[seatI] = true;
+        if (handStage != HandStage.SBPostStage) {
+            plrInHand[seatI] = false;
+        } else {
+            plrInHand[seatI] = true;
+        }
 
-        // // Assign button if it's the first player
-        // if (getPlayerCount() == 1) {
-        //     _setTblButton(tblDataId, seatI);
-        //     _setTblWhoseTurn(tblDataId, seatI);
-        // }
+        // Assign button if it's the first player
+        if (_getPlayerCount() == 1) {
+            button = seatI;
+            whoseTurn = seatI;
+        }
     }
 
     function leaveTable(uint256 seatI) public {
@@ -174,7 +169,7 @@ contract PokerTable is PokerLogic {
         plrStack[seatI] += rebuyAmount;
     }
 
-    function getPlayerCount() internal view returns (uint256) {
+    function _getPlayerCount() internal view returns (uint256) {
         uint256 count = 0;
         for (uint256 i = 0; i < numSeats; i++) {
             if (plrActionAddr[i] == address(0)) {
@@ -201,21 +196,21 @@ contract PokerTable is PokerLogic {
 
     function _nextStreet() internal {
         // Set the turn to the next player
-        // TODO - can we improve this logic?  Is logic flawed?
-        if (button == 0) {
-            button = uint8(numSeats - 1);
-        } else {
-            button = uint8((button - 1) % numSeats);
-        }
+        // TODO - what was this?  Why would we change button here?
+        // if (button == 0) {
+        //     button = uint8(numSeats - 1);
+        // } else {
+        //     button = uint8((button - 1) % numSeats);
+        // }
 
         // _setTblWhoseTurn(tblDataId, button);
-        (whoseTurn, closingActionCount) = _incrementWhoseTurn(
-            whoseTurn,
-            plrInHand,
-            plrStack,
-            closingActionCount
-        );
-        // whoseTurn = button;
+        // (whoseTurn, closingActionCount) = _incrementWhoseTurn(
+        //     whoseTurn,
+        //     plrInHand,
+        //     plrStack,
+        //     closingActionCount
+        // );
+        whoseTurn = button;
         // uint8 whoseTurn = _getTblWhoseTurn(tblDataId);
 
         // Reset table betting state
@@ -321,13 +316,18 @@ contract PokerTable is PokerLogic {
         // _setTblTurn(tblDataId, 53);
         // _setTblRiver(tblDataId, 53);
         // _setNumPots(tblDataId, 0);
+        flop0 = 0;
+        flop1 = 0;
+        flop2 = 0;
+        turn = 0;
+        river = 0;
 
         // Reset players
         for (uint i = 0; i < numSeats; i++) {
             if (plrActionAddr[i] != address(0)) {
-                plrHolecardsA[i] = 53;
-                plrHolecardsB[i] = 53;
-                plrInHand[i] = true;
+                plrHolecardsA[i] = 0;
+                plrHolecardsB[i] = 0;
+
                 plrLastActionType[i] = ActionType.Null;
                 plrLastAmount[i] = 0;
 
@@ -335,9 +335,9 @@ contract PokerTable is PokerLogic {
                 plrShowdownVal[i] = 8000;
 
                 // Handle bust and sitting out conditions
-                // if (plrStack[i] <= smallBlind) {
-                //     plrSittingOut[i] = true;
-                // }
+                if (plrStack[i] <= smallBlind) {
+                    plrSittingOut[i] = true;
+                }
                 // TODO - what was this logic?  Why can't have both?
                 // ) {
                 //     seats[seat_i].inHand = false;
@@ -346,12 +346,17 @@ contract PokerTable is PokerLogic {
                 //     seats[seat_i].inHand = true;
                 //     seats[seat_i].sittingOut = false;
                 // }
+
+                if (!plrSittingOut[i]) {
+                    plrInHand[i] = true;
+                } else {
+                    plrInHand[i] = false;
+                }
             }
         }
 
-        button = (button + 1) % uint8(numSeats);
-        // uint8 button = _getTblButton(tblDataId);
-        // _setTblWhoseTurn(tblDataId, button);
+        button = _incrementButton(button, plrSittingOut, plrStack);
+        whoseTurn = button;
         handId++;
     }
 
@@ -368,34 +373,30 @@ contract PokerTable is PokerLogic {
             stack: plrStack[seatI],
             betStreet: plrBetStreet[seatI],
             // Switching it to use table one now
-            // lastActionType: _getPlrLastActionType(plrDataId),
             lastActionType: lastActionType,
             lastAmount: plrLastAmount[seatI]
         });
-
-        require(playerState.addr == player, "Player not at seat!");
-        require(playerState.inHand, "Player not in hand!");
 
         // Create a HandState struct to manage hand transitions
         HandState memory hsNew;
 
         // Group table-related variables into a struct
-        TableState memory tableState = TableState({
-            handStage: handStage,
-            button: button,
-            facingBet: facingBet,
-            lastRaise: lastRaise // Assuming lastRaise comes from the same source
-        });
+        // TableState memory tableState = TableState({
+        //     handStage: handStage,
+        //     button: button,
+        //     facingBet: facingBet,
+        //     lastRaise: lastRaise // Assuming lastRaise comes from the same source
+        // });
         HandState memory hs = HandState({
             playerStack: playerState.stack,
             playerBetStreet: playerState.betStreet,
-            handStage: tableState.handStage,
+            handStage: handStage,
             lastActionType: playerState.lastActionType,
             lastActionAmount: playerState.lastAmount,
             transitionNextStreet: false,
-            facingBet: tableState.facingBet,
-            lastRaise: tableState.lastRaise,
-            button: tableState.button
+            facingBet: facingBet,
+            lastRaise: lastRaise,
+            button: button
         });
 
         // Transition the hand state
@@ -430,23 +431,32 @@ contract PokerTable is PokerLogic {
         return count == 1;
     }
 
-    function _getNewCards(
-        uint numCards
-    ) internal pure returns (uint8[] memory) {
-        uint8[] memory retCards = new uint8[](numCards);
-        for (uint i = 0; i < numCards; i++) {
-            retCards[i] = 1;
+    function _dealHolecards() internal {
+        for (uint256 i = 0; i < numSeats; i++) {
+            if (plrInHand[i]) {
+                uint[] memory cards = cardDealer.dealCards(2);
+                plrHolecardsA[i] = uint8(cards[0]);
+                plrHolecardsB[i] = uint8(cards[1]);
+            }
         }
-        return retCards;
     }
 
-    function _dealHolecards() internal {}
+    function _dealFlop() internal {
+        uint[] memory cards = cardDealer.dealCards(3);
+        flop0 = uint8(cards[0]);
+        flop1 = uint8(cards[1]);
+        flop2 = uint8(cards[2]);
+    }
 
-    function _dealFlop() internal {}
+    function _dealTurn() internal {
+        uint[] memory cards = cardDealer.dealCards(1);
+        turn = uint8(cards[0]);
+    }
 
-    function _dealTurn() internal {}
-
-    function _dealRiver() internal {}
+    function _dealRiver() internal {
+        uint[] memory cards = cardDealer.dealCards(1);
+        river = uint8(cards[0]);
+    }
 
     function _handStageOverCheck() internal view returns (bool) {
         return (closingActionCount > 0) && uint(closingActionCount) >= numSeats;
@@ -461,9 +471,6 @@ contract PokerTable is PokerLogic {
     }
 
     function _showdown() internal {
-        // Create action struct for showdown event
-        // uint256[] memory showdownCards = new uint256[](numSeats);
-
         // Find players still in the hand
         uint256[] memory stillInHand = new uint256[](numSeats);
         uint256 count = 0;
@@ -494,13 +501,13 @@ contract PokerTable is PokerLogic {
         }
     }
 
-    // Maybe move to other file?
+    // Below this point - try to refactor and move to logic file?
 
     function _transitionHandStage(HandStage hs) internal {
         // Blinds
         if (hs == HandStage.SBPostStage) {
             handStage = HandStage.BBPostStage;
-            _transitionHandStage(HandStage.BBPostStage);
+            // _transitionHandStage(HandStage.BBPostStage);
             return;
         } else if (hs == HandStage.BBPostStage) {
             handStage = HandStage.HolecardsDeal;
@@ -509,7 +516,7 @@ contract PokerTable is PokerLogic {
         }
         // Deal Holecards
         else if (hs == HandStage.HolecardsDeal) {
-            // _dealHolecards();
+            _dealHolecards();
             handStage = HandStage.PreflopBetting;
             _transitionHandStage(HandStage.PreflopBetting);
             return;
@@ -517,6 +524,9 @@ contract PokerTable is PokerLogic {
         // Preflop Betting
         else if (hs == HandStage.PreflopBetting) {
             if (_handStageOverCheck() || allFolded() || allIn()) {
+                bool cond1 = _handStageOverCheck();
+                bool cond2 = allFolded();
+                bool cond3 = allIn();
                 _nextStreet();
                 handStage = HandStage.FlopDeal;
                 _transitionHandStage(HandStage.FlopDeal);
@@ -597,8 +607,6 @@ contract PokerTable is PokerLogic {
 
         HandState memory hsNew = _processAction(actionType, seatI, amount);
 
-        // uint pot = potInitial;
-
         plrStack[seatI] = hsNew.playerStack;
         plrBetStreet[seatI] = hsNew.playerBetStreet;
         plrLastAmount[seatI] = amount;
@@ -609,6 +617,13 @@ contract PokerTable is PokerLogic {
 
         facingBet = hsNew.facingBet;
 
+        (whoseTurn, closingActionCount) = _incrementWhoseTurn(
+            whoseTurn,
+            plrInHand,
+            plrStack,
+            closingActionCount
+        );
+
         // Should either be reset or incremented
         if (
             actionType == ActionType.SBPost || actionType == ActionType.BBPost
@@ -618,16 +633,22 @@ contract PokerTable is PokerLogic {
             closingActionCount = 0;
         }
 
-        (whoseTurn, closingActionCount) = _incrementWhoseTurn(
-            whoseTurn,
-            plrInHand,
-            plrStack,
-            closingActionCount
-        );
         lastRaise = hsNew.lastRaise;
         lastActionType = hsNew.lastActionType;
         lastAmount = hsNew.lastActionAmount;
 
         _transitionHandStage(handStage);
+    }
+
+    function showCards(bool muck, uint lookupVal) public {
+        // TODO - if only one player they should not need to show cards
+        // Fully trusting front end to feed in lookupVal, will replace with proof
+        require(msg.sender == plrActionAddr[whoseTurn], "Not your turn!");
+        if (muck) {
+            // Worst possible lookupVal
+            plrShowdownVal[whoseTurn] = 8000;
+        } else {
+            plrShowdownVal[whoseTurn] = lookupVal;
+        }
     }
 }
