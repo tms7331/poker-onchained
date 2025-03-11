@@ -78,14 +78,11 @@ contract PokerLogic is EnumsAndActions {
             newHandState.lastActionAmount = newCallAmount;
         } else if (actionType == ActionType.Check) {
             // CHECKS:
-            // facing action is valid (check, None)
-            // easier to check on betsizes?
-            // If we're BB and action goes SBPost, BBPost, call, we can check
+            // Either facing amount is 0
+            // Or we're BB and SB has called
+            // TODO - would this let SB check?
             require(
-                handState.lastActionType == ActionType.Check ||
-                    handState.lastActionType == ActionType.Null ||
-                    // TODO - refine this
-                    handState.lastActionType == ActionType.Call,
+                handState.facingBet == handState.playerBetStreet,
                 "Not a valid check!"
             );
             newHandState.lastActionAmount = 0;
@@ -98,111 +95,95 @@ contract PokerLogic is EnumsAndActions {
         return newHandState;
     }
 
-    function _settle(
-        uint[9] memory plrShowdownVal,
-        Pot[] memory pots
-    ) internal pure {
-        uint8 numSeats = uint8(plrShowdownVal.length);
-        // ??????
+    function _sort(uint[] memory data) internal pure returns (uint[] memory) {
+        uint n = data.length;
+        for (uint i = 0; i < n; i++) {
+            for (uint j = 0; j < n - i - 1; j++) {
+                if (data[j] > data[j + 1]) {
+                    // Swap the elements
+                    uint temp = data[j];
+                    data[j] = data[j + 1];
+                    data[j + 1] = temp;
+                }
+            }
+        }
+        return data;
+    }
 
-        // uint handId = _getHandId(tblDataId);
-        // uint256[] memory lookupVals = new uint256[](numSeats);
-        // for (uint256 i = 0; i < numSeats; i++) {
-        //     Suave.DataId plrDataId = plrDataIdArr[i];
-        //     uint showdownVal = _getPlrShowdownVal(plrDataId);
-        //     lookupVals[i] = showdownVal;
-        // }
-        // uint numPots = _getNumPots(tblDataId);
+    function _buildPots(
+        uint8 numSeats,
+        bool[9] memory plrInHand,
+        uint[9] memory plrBetHand
+    ) internal pure returns (Pot[] memory pots) {
+        uint[] memory sortedBets = new uint[](numSeats);
+        for (uint i = 0; i < numSeats; i++) {
+            sortedBets[i] = plrBetHand[i];
+        }
+        sortedBets = _sort(sortedBets);
 
-        for (uint8 potI = 0; potI < pots.length; potI++) {
-            // Pot memory pot = _getTblPotsComplete(plrDataIdArr[potI]);
-            Pot memory pot = pots[potI];
+        // Create pots array
+        pots = new Pot[](numSeats);
+        pots[0] = Pot({amount: 0, players: new bool[](numSeats)});
 
-            uint256 winnerVal = 9000;
-            bool[] memory isWinner = new bool[](numSeats);
+        uint potCount = 0;
 
-            uint256 winnerCount = 0;
-            for (uint256 i = 0; i < numSeats; i++) {
-                // uint8 ev = pot.players[i] ? 1 : 0;
-                if (pot.players[i] && plrShowdownVal[i] <= winnerVal) {
-                    if (plrShowdownVal[i] < winnerVal) {
-                        // Ugly but we have to clear out previous winners
-                        for (uint256 j = 0; j < numSeats; j++) {
-                            isWinner[j] = false;
+        for (uint i = 0; i < numSeats; i++) {
+            bool closePot = false;
+            if (sortedBets[i] == 0) {
+                continue;
+            }
+            // If it's [50, 100, 100], we need to end up with [0, 50, 50] after first iteration
+            for (uint j = i + 1; j < numSeats; j++) {
+                sortedBets[j] -= sortedBets[i];
+            }
+
+            // Now go through each player and add up for pot
+            for (uint j = 0; j < numSeats; j++) {
+                if (plrBetHand[j] > 0) {
+                    // Sanity check during testing -
+                    // Due to logic they should always have at least the amount
+                    require(
+                        plrBetHand[j] >= sortedBets[i],
+                        "Invalid bet amount"
+                    );
+                    pots[potCount].amount += (sortedBets[i]);
+                    plrBetHand[j] -= sortedBets[i];
+                    if (plrInHand[j]) {
+                        pots[potCount].players[j] = true;
+                        // Only close pot if they were in the hand!
+                        if (plrBetHand[j] == 0) {
+                            closePot = true;
                         }
-                        winnerVal = plrShowdownVal[i];
-                        isWinner[i] = true;
-                        winnerCount = 1;
-                    } else {
-                        isWinner[i] = true;
-                        winnerCount++;
                     }
                 }
             }
-            // Credit winnings
-            // for (uint8 i = 0; i < numSeats; i++) {
-            //     if (isWinner[i]) {
-            //         uint256 amount = pot.amount / winnerCount;
-
-            //         _setPlrStack(
-            //             plrDataIdArr[i],
-            //             _getPlrStack(plrDataIdArr[i]) + amount
-            //         );
-            //         emitSettle(tableId, handId, potI, amount, i);
-            //         (uint8 card0, uint8 card1) = _getPlrHolecards(
-            //             plrDataIdArr[i]
-            //         );
-            //         emitShowdown(tableId, handId, i, card0, card1);
-            //     }
-            // }
-        }
-    }
-
-    function _calculateFinalPot(
-        bool[9] memory inHand,
-        uint[9] memory betThisStreetAmounts,
-        Pot[] memory pots,
-        uint256 potAmount
-    ) internal pure returns (Pot memory) {
-        // uint256 alreadyBet - do we need this?
-
-        uint8 numSeats = uint8(inHand.length);
-        bool[] memory streetPlayers = new bool[](numSeats);
-        // uint256 playerCount = 0;
-
-        // uint8[] memory activePlayers = new bool[](numSeats);
-
-        // Identify players still in hand and with positive stack
-        for (uint256 i = 0; i < numSeats; i++) {
-            if (inHand[i] && betThisStreetAmounts[i] > 0) {
-                streetPlayers[i] = true;
+            if (closePot) {
+                potCount++;
+                if (potCount < numSeats) {
+                    pots[potCount] = Pot({
+                        amount: 0,
+                        players: new bool[](numSeats)
+                    });
+                }
             }
         }
 
-        uint numPots = pots.length;
-        for (uint256 i = 0; i < numPots; i++) {
-            Pot memory pot = pots[i];
-            potAmount -= pot.amount;
+        // Create new array with correct size and copy pots
+        Pot[] memory finalPots = new Pot[](potCount);
+        for (uint i = 0; i < potCount; i++) {
+            finalPots[i] = pots[i];
         }
-        for (uint256 i = 0; i < numSeats; i++) {
-            // Suave.DataId plrDataId = plrDataIdArr[i];
-            potAmount += betThisStreetAmounts[i];
-        }
-
-        Pot memory mainPot;
-        mainPot.players = streetPlayers;
-        mainPot.amount = potAmount;
-
-        return mainPot;
+        return finalPots;
     }
 
     function _incrementWhoseTurn(
+        uint8 numSeats,
         uint8 whoseTurn,
         bool[9] memory inHand,
         uint[9] memory stacks,
-        int closingActionCount
+        int closingActionCount,
+        bool isShowdown
     ) internal pure returns (uint8, int) {
-        uint8 numSeats = uint8(inHand.length);
         // bool incremented = false;
         for (uint256 i = 1; i <= numSeats; i++) {
             // Go around the table in order, starting from whoever's turn it is
@@ -210,7 +191,7 @@ contract PokerLogic is EnumsAndActions {
             closingActionCount++;
 
             // The player must be in the hand and have some funds
-            if (inHand[seatI] && stacks[seatI] > 0) {
+            if (inHand[seatI] && (isShowdown || stacks[seatI] > 0)) {
                 whoseTurn = uint8(seatI);
                 // incremented = true;
                 break;

@@ -235,7 +235,106 @@ contract TestPokerTable is Test {
         );
     }
 
-    function test_2pBasic() public {
+    function test_foldPreflop2p() public {
+        // Deploy the contract
+        PokerTableHarness pth = deploy();
+
+        // Set up players
+        address p0 = address(0x123);
+        address p1 = address(0x456);
+
+        // Join table
+        vm.prank(p0);
+        pth.joinTable(0, p0, 100, false);
+
+        vm.prank(p1);
+        pth.joinTable(1, p1, 100, false);
+
+        assertEq(uint(pth.button()), 0, "Button should be 1");
+        assertEq(uint(pth.whoseTurn()), 0, "Whose turn should be 1");
+
+        // Post blinds
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.SBPost, 0, 1);
+        vm.prank(p1);
+        pth.takeAction(EnumsAndActions.ActionType.BBPost, 1, 2);
+
+        // Player 0 folds
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.Fold, 0, 0);
+
+        // Whose turn should be 1
+        assertEq(uint(pth.button()), 1, "Button should be 1");
+        assertEq(uint(pth.whoseTurn()), 1, "Whose turn should be 1");
+
+        // Now post blinds for next hand
+        vm.prank(p1);
+        pth.takeAction(EnumsAndActions.ActionType.SBPost, 1, 1);
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.BBPost, 0, 2);
+
+        // Player 1 folds
+        vm.prank(p1);
+        pth.takeAction(EnumsAndActions.ActionType.Fold, 1, 0);
+
+        // Whose turn should be 0
+        assertEq(uint(pth.whoseTurn()), 0, "Whose turn should be 0");
+        assertEq(uint(pth.button()), 0, "Button should be 0");
+    }
+
+    function test_foldPreflop3p() public {
+        // Deploy the contract
+        PokerTableHarness pth = deploy();
+
+        // Set up players
+        address p0 = address(0x123);
+        address p1 = address(0x456);
+        address p2 = address(0x789);
+
+        // Join table
+        vm.prank(p0);
+        pth.joinTable(0, p0, 100, false);
+
+        vm.prank(p1);
+        pth.joinTable(1, p1, 100, false);
+
+        vm.prank(p2);
+        pth.joinTable(2, p2, 100, false);
+
+        // Post blinds
+        vm.prank(p1);
+        pth.takeAction(EnumsAndActions.ActionType.SBPost, 1, 1);
+        vm.prank(p2);
+        pth.takeAction(EnumsAndActions.ActionType.BBPost, 2, 2);
+
+        // Player 0 folds
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.Fold, 0, 0);
+        vm.prank(p1);
+        pth.takeAction(EnumsAndActions.ActionType.Fold, 1, 0);
+
+        // Whose turn should be 1
+        assertEq(uint(pth.button()), 1, "Button should be 1");
+        assertEq(uint(pth.whoseTurn()), 2, "Whose turn should be 1");
+
+        // Now post blinds for next hand
+        vm.prank(p2);
+        pth.takeAction(EnumsAndActions.ActionType.SBPost, 2, 1);
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.BBPost, 0, 2);
+
+        // Player 1 folds
+        vm.prank(p1);
+        pth.takeAction(EnumsAndActions.ActionType.Fold, 1, 0);
+        vm.prank(p2);
+        pth.takeAction(EnumsAndActions.ActionType.Fold, 2, 0);
+
+        // Whose turn should be 0
+        assertEq(uint(pth.button()), 2, "Button should be 0");
+        assertEq(uint(pth.whoseTurn()), 0, "Whose turn should be 0");
+    }
+
+    function test_basic2p() public {
         // Deploy the contract
         PokerTableHarness pth = deploy();
 
@@ -277,6 +376,7 @@ contract TestPokerTable is Test {
 
         vm.prank(p1);
         pth.takeAction(EnumsAndActions.ActionType.Bet, 1, 1);
+
         vm.prank(p0);
         pth.takeAction(EnumsAndActions.ActionType.Call, 0, 0);
 
@@ -290,6 +390,7 @@ contract TestPokerTable is Test {
 
         vm.prank(p1);
         pth.takeAction(EnumsAndActions.ActionType.Check, 1, 0);
+
         vm.prank(p0);
         pth.takeAction(EnumsAndActions.ActionType.Check, 0, 0);
 
@@ -314,9 +415,9 @@ contract TestPokerTable is Test {
         );
 
         // Showdown
-        vm.prank(p0);
-        pth.showCards(false, 1234);
         vm.prank(p1);
+        pth.showCards(false, 1234);
+        vm.prank(p0);
         pth.showCards(false, 1234);
 
         // Should be on SBPostStage
@@ -325,50 +426,6 @@ contract TestPokerTable is Test {
             uint(EnumsAndActions.HandStage.SBPostStage),
             "Hand stage should be SBPostStage"
         );
-    }
-
-    function test_foldPreflop() public {
-        // Deploy the contract
-        PokerTableHarness pth = deploy();
-
-        // Set up players
-        address p0 = address(0x123);
-        address p1 = address(0x456);
-
-        // Join table
-        vm.prank(p0);
-        pth.joinTable(0, p0, 100, false);
-
-        vm.prank(p1);
-        pth.joinTable(1, p1, 100, false);
-
-        // Post blinds
-        vm.prank(p0);
-        pth.takeAction(EnumsAndActions.ActionType.SBPost, 0, 1);
-        vm.prank(p1);
-        pth.takeAction(EnumsAndActions.ActionType.BBPost, 1, 2);
-
-        // Player 0 folds
-        vm.prank(p0);
-        pth.takeAction(EnumsAndActions.ActionType.Fold, 0, 0);
-
-        // Whose turn should be 1
-        assertEq(uint(pth.button()), 1, "Button should be 1");
-        assertEq(uint(pth.whoseTurn()), 1, "Whose turn should be 1");
-
-        // Now post blinds for next hand
-        vm.prank(p1);
-        pth.takeAction(EnumsAndActions.ActionType.SBPost, 1, 1);
-        vm.prank(p0);
-        pth.takeAction(EnumsAndActions.ActionType.BBPost, 0, 2);
-
-        // Player 1 folds
-        vm.prank(p1);
-        pth.takeAction(EnumsAndActions.ActionType.Fold, 1, 0);
-
-        // Whose turn should be 0
-        assertEq(uint(pth.whoseTurn()), 0, "Whose turn should be 0");
-        assertEq(uint(pth.button()), 0, "Button should be 0");
     }
 
     function test_thirdHand() public {
@@ -514,9 +571,9 @@ contract TestPokerTable is Test {
         pth.takeAction(EnumsAndActions.ActionType.Call, 0, 0);
 
         // Will split pot
-        vm.prank(p0);
-        pth.showCards(false, 2345);
         vm.prank(p1);
+        pth.showCards(false, 2345);
+        vm.prank(p0);
         pth.showCards(false, 2345);
 
         // Check final state
@@ -614,10 +671,9 @@ contract TestPokerTable is Test {
         vm.prank(p1);
         pth.takeAction(EnumsAndActions.ActionType.Call, 1, 0);
 
-        vm.prank(p0);
-        pth.showCards(false, 2345);
-
         vm.prank(p1);
+        pth.showCards(false, 2345);
+        vm.prank(p0);
         pth.showCards(false, 2345);
 
         // Check final state
@@ -652,12 +708,12 @@ contract TestPokerTable is Test {
         pth.joinTable(2, p2, 100, false);
 
         // Post blinds and initial betting
-        vm.prank(p0);
-        pth.takeAction(EnumsAndActions.ActionType.SBPost, 0, 1);
         vm.prank(p1);
-        pth.takeAction(EnumsAndActions.ActionType.BBPost, 1, 2);
+        pth.takeAction(EnumsAndActions.ActionType.SBPost, 1, 1);
         vm.prank(p2);
-        pth.takeAction(EnumsAndActions.ActionType.Call, 2, 0);
+        pth.takeAction(EnumsAndActions.ActionType.BBPost, 2, 2);
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.Call, 0, 0);
 
         assertEq(
             uint(pth.handStage()),
@@ -665,10 +721,10 @@ contract TestPokerTable is Test {
             "Hand stage should be PreflopBetting"
         );
 
-        vm.prank(p0);
-        pth.takeAction(EnumsAndActions.ActionType.Call, 0, 0);
         vm.prank(p1);
-        pth.takeAction(EnumsAndActions.ActionType.Check, 1, 0);
+        pth.takeAction(EnumsAndActions.ActionType.Call, 1, 0);
+        vm.prank(p2);
+        pth.takeAction(EnumsAndActions.ActionType.Check, 2, 0);
 
         assertEq(
             uint(pth.handStage()),
@@ -677,14 +733,14 @@ contract TestPokerTable is Test {
         );
 
         // Flop betting
-        vm.prank(p0);
-        pth.takeAction(EnumsAndActions.ActionType.Bet, 0, 10);
         vm.prank(p1);
-        pth.takeAction(EnumsAndActions.ActionType.Bet, 1, 20);
+        pth.takeAction(EnumsAndActions.ActionType.Bet, 1, 10);
         vm.prank(p2);
-        pth.takeAction(EnumsAndActions.ActionType.Call, 2, 0);
+        pth.takeAction(EnumsAndActions.ActionType.Bet, 2, 20);
         vm.prank(p0);
         pth.takeAction(EnumsAndActions.ActionType.Call, 0, 0);
+        vm.prank(p1);
+        pth.takeAction(EnumsAndActions.ActionType.Call, 1, 0);
 
         assertEq(
             uint(pth.handStage()),
@@ -693,12 +749,12 @@ contract TestPokerTable is Test {
         );
 
         // Turn betting
-        vm.prank(p0);
-        pth.takeAction(EnumsAndActions.ActionType.Check, 0, 0);
         vm.prank(p1);
         pth.takeAction(EnumsAndActions.ActionType.Check, 1, 0);
         vm.prank(p2);
         pth.takeAction(EnumsAndActions.ActionType.Check, 2, 0);
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.Check, 0, 0);
 
         assertEq(
             uint(pth.handStage()),
@@ -707,18 +763,18 @@ contract TestPokerTable is Test {
         );
 
         // River betting
-        vm.prank(p0);
-        pth.takeAction(EnumsAndActions.ActionType.Bet, 0, 5);
         vm.prank(p1);
-        pth.takeAction(EnumsAndActions.ActionType.Call, 1, 0);
+        pth.takeAction(EnumsAndActions.ActionType.Bet, 1, 5);
         vm.prank(p2);
         pth.takeAction(EnumsAndActions.ActionType.Call, 2, 0);
-
         vm.prank(p0);
-        pth.showCards(false, 2345);
+        pth.takeAction(EnumsAndActions.ActionType.Call, 0, 0);
+
         vm.prank(p1);
         pth.showCards(false, 2345);
         vm.prank(p2);
+        pth.showCards(false, 2345);
+        vm.prank(p0);
         pth.showCards(false, 2345);
 
         // Check final state
@@ -756,14 +812,15 @@ contract TestPokerTable is Test {
         address p2 = address(0x789);
 
         // Join table
+        // P2 joins first to make it so p0 is SB
+        vm.prank(p2);
+        pth.joinTable(2, p2, 100, false);
+
         vm.prank(p0);
         pth.joinTable(0, p0, 100, false);
 
         vm.prank(p1);
         pth.joinTable(1, p1, 100, false);
-
-        vm.prank(p2);
-        pth.joinTable(2, p2, 100, false);
 
         // Post blinds and initial betting
         vm.prank(p0);
@@ -880,20 +937,12 @@ contract TestPokerTable is Test {
         pth.joinTable(2, p2, 100, false);
 
         // Post blinds and initial betting
-        vm.prank(p0);
-        pth.takeAction(EnumsAndActions.ActionType.SBPost, 0, 1);
         vm.prank(p1);
-        pth.takeAction(EnumsAndActions.ActionType.BBPost, 1, 2);
+        pth.takeAction(EnumsAndActions.ActionType.SBPost, 1, 1);
         vm.prank(p2);
-        pth.takeAction(EnumsAndActions.ActionType.Call, 2, 2);
-
-        assertEq(
-            uint(pth.handStage()),
-            uint(EnumsAndActions.HandStage.PreflopBetting)
-        );
-
+        pth.takeAction(EnumsAndActions.ActionType.BBPost, 2, 2);
         vm.prank(p0);
-        pth.takeAction(EnumsAndActions.ActionType.Call, 0, 1);
+        pth.takeAction(EnumsAndActions.ActionType.Call, 0, 0);
 
         assertEq(
             uint(pth.handStage()),
@@ -901,7 +950,15 @@ contract TestPokerTable is Test {
         );
 
         vm.prank(p1);
-        pth.takeAction(EnumsAndActions.ActionType.Check, 1, 0);
+        pth.takeAction(EnumsAndActions.ActionType.Call, 1, 1);
+
+        assertEq(
+            uint(pth.handStage()),
+            uint(EnumsAndActions.HandStage.PreflopBetting)
+        );
+
+        vm.prank(p2);
+        pth.takeAction(EnumsAndActions.ActionType.Check, 2, 0);
 
         assertEq(
             uint(pth.handStage()),
@@ -915,14 +972,14 @@ contract TestPokerTable is Test {
         );
 
         // Flop betting
-        vm.prank(p0);
-        pth.takeAction(EnumsAndActions.ActionType.Check, 0, 0);
         vm.prank(p1);
-        pth.takeAction(EnumsAndActions.ActionType.Bet, 1, 10);
+        pth.takeAction(EnumsAndActions.ActionType.Check, 1, 0);
         vm.prank(p2);
-        pth.takeAction(EnumsAndActions.ActionType.Fold, 2, 0);
+        pth.takeAction(EnumsAndActions.ActionType.Bet, 2, 10);
         vm.prank(p0);
         pth.takeAction(EnumsAndActions.ActionType.Fold, 0, 0);
+        vm.prank(p1);
+        pth.takeAction(EnumsAndActions.ActionType.Fold, 1, 0);
 
         // Check final state
         assertEq(
@@ -930,9 +987,9 @@ contract TestPokerTable is Test {
             uint(EnumsAndActions.HandStage.SBPostStage)
         );
 
+        assertEq(pth.plrStack(1), 98);
+        assertEq(pth.plrStack(2), 104);
         assertEq(pth.plrStack(0), 98);
-        assertEq(pth.plrStack(1), 104);
-        assertEq(pth.plrStack(2), 98);
     }
 
     function test_integration3pAllIn() public {
@@ -943,12 +1000,12 @@ contract TestPokerTable is Test {
         address p2 = address(0x789);
 
         // Join table
+        vm.prank(p2);
+        pth.joinTable(2, p2, 100, false);
         vm.prank(p0);
         pth.joinTable(0, p0, 100, false);
         vm.prank(p1);
         pth.joinTable(1, p1, 100, false);
-        vm.prank(p2);
-        pth.joinTable(2, p2, 100, false);
 
         // Post blinds and initial betting
         vm.prank(p0);
@@ -982,6 +1039,13 @@ contract TestPokerTable is Test {
         vm.prank(p2);
         pth.takeAction(EnumsAndActions.ActionType.Call, 2, 98);
 
+        vm.prank(p0);
+        pth.showCards(false, 1234);
+        vm.prank(p1);
+        pth.showCards(false, 1234);
+        vm.prank(p2);
+        pth.showCards(false, 1234);
+
         // Should progress to river and split pot
         assertEq(
             uint(pth.handStage()),
@@ -1002,14 +1066,14 @@ contract TestPokerTable is Test {
         address p2 = address(0x789);
         address p3 = address(0xabc);
 
+        vm.prank(p3);
+        pth.joinTable(3, p3, 100, false);
         vm.prank(p0);
         pth.joinTable(0, p0, 200, false);
         vm.prank(p1);
         pth.joinTable(1, p1, 100, false);
         vm.prank(p2);
         pth.joinTable(2, p2, 50, false);
-        vm.prank(p3);
-        pth.joinTable(3, p3, 100, false);
 
         vm.prank(p0);
         pth.takeAction(EnumsAndActions.ActionType.SBPost, 0, 1);
@@ -1050,6 +1114,13 @@ contract TestPokerTable is Test {
         vm.prank(p3);
         pth.takeAction(EnumsAndActions.ActionType.Call, 3, 0);
 
+        vm.prank(p0);
+        pth.showCards(false, 1234);
+        vm.prank(p2);
+        pth.showCards(false, 1234);
+        vm.prank(p3);
+        pth.showCards(false, 1234);
+
         assertEq(
             uint(pth.handStage()),
             uint(EnumsAndActions.HandStage.SBPostStage)
@@ -1072,14 +1143,14 @@ contract TestPokerTable is Test {
         address p2 = address(0x789);
         address p3 = address(0xabc);
 
+        vm.prank(p3);
+        pth.joinTable(3, p3, 100, false);
         vm.prank(p0);
         pth.joinTable(0, p0, 200, false);
         vm.prank(p1);
         pth.joinTable(1, p1, 100, false);
         vm.prank(p2);
         pth.joinTable(2, p2, 50, false);
-        vm.prank(p3);
-        pth.joinTable(3, p3, 100, false);
 
         vm.prank(p0);
         pth.takeAction(EnumsAndActions.ActionType.SBPost, 0, 1);
@@ -1125,6 +1196,13 @@ contract TestPokerTable is Test {
         pth.takeAction(EnumsAndActions.ActionType.Bet, 0, 53);
         vm.prank(p3);
         pth.takeAction(EnumsAndActions.ActionType.Call, 3, 0);
+
+        vm.prank(p0);
+        pth.showCards(false, 1234);
+        vm.prank(p2);
+        pth.showCards(false, 1234);
+        vm.prank(p3);
+        pth.showCards(false, 1234);
 
         assertEq(
             uint(pth.handStage()),
@@ -1208,12 +1286,12 @@ contract TestPokerTable is Test {
         // require(success, "Table initialization failed");
 
         // Join table
+        vm.prank(p2);
+        pth.joinTable(2, p2, 50, false);
         vm.prank(p0);
         pth.joinTable(0, p0, 200, false);
         vm.prank(p1);
         pth.joinTable(1, p1, 100, false);
-        vm.prank(p2);
-        pth.joinTable(2, p2, 50, false);
 
         // Post blinds and initial betting
         vm.prank(p0);
