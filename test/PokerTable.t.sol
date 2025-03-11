@@ -13,7 +13,7 @@ contract PokerTableHarness is PokerTable {
         uint _bigBlind,
         uint _minBuyin,
         uint _maxBuyin,
-        uint _numSeats
+        uint8 _numSeats
     )
         PokerTable(
             _tableId,
@@ -33,7 +33,7 @@ contract TestPokerTable is Test {
         uint bigBlind = 2;
         uint minBuyin = 20;
         uint maxBuyin = 200;
-        uint numPlayers = 6;
+        uint8 numPlayers = 6;
         PokerTableHarness pth = new PokerTableHarness(
             tableId,
             smallBlind,
@@ -235,6 +235,98 @@ contract TestPokerTable is Test {
         );
     }
 
+    function test_2pBasic() public {
+        // Deploy the contract
+        PokerTableHarness pth = deploy();
+
+        // Set up players
+        address p0 = address(0x123);
+        address p1 = address(0x456);
+
+        // Join table
+        vm.prank(p0);
+        pth.joinTable(0, p0, 100, false);
+
+        vm.prank(p1);
+        pth.joinTable(1, p1, 100, false);
+
+        // Post blinds
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.SBPost, 0, 1);
+        vm.prank(p1);
+        pth.takeAction(EnumsAndActions.ActionType.BBPost, 1, 2);
+
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.Call, 0, 0);
+        vm.prank(p1);
+        pth.takeAction(EnumsAndActions.ActionType.Check, 1, 0);
+
+        // Should be on flop
+        assertEq(
+            uint(pth.handStage()),
+            uint(EnumsAndActions.HandStage.FlopBetting),
+            "Hand stage should be FlopBetting"
+        );
+        assertTrue(
+            pth.flop0() != 0 || pth.flop1() != 0 || pth.flop2() != 0,
+            "Flop should be dealt"
+        );
+
+        // Now it is p1's turn to go first!
+        assertEq(uint(pth.whoseTurn()), 1, "Whose turn should be 1");
+
+        vm.prank(p1);
+        pth.takeAction(EnumsAndActions.ActionType.Bet, 1, 1);
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.Call, 0, 0);
+
+        // Should be on turn
+        assertEq(
+            uint(pth.handStage()),
+            uint(EnumsAndActions.HandStage.TurnBetting),
+            "Hand stage should be TurnBetting"
+        );
+        assertTrue(pth.turn() != 0, "Turn should be dealt");
+
+        vm.prank(p1);
+        pth.takeAction(EnumsAndActions.ActionType.Check, 1, 0);
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.Check, 0, 0);
+
+        // Should be on river
+        assertEq(
+            uint(pth.handStage()),
+            uint(EnumsAndActions.HandStage.RiverBetting),
+            "Hand stage should be RiverBetting"
+        );
+        assertTrue(pth.river() != 0, "River should be dealt");
+
+        vm.prank(p1);
+        pth.takeAction(EnumsAndActions.ActionType.Bet, 1, 1);
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.Call, 0, 0);
+
+        // Should be on showdown
+        assertEq(
+            uint(pth.handStage()),
+            uint(EnumsAndActions.HandStage.Showdown),
+            "Hand stage should be Showdown"
+        );
+
+        // Showdown
+        vm.prank(p0);
+        pth.showCards(false, 1234);
+        vm.prank(p1);
+        pth.showCards(false, 1234);
+
+        // Should be on SBPostStage
+        assertEq(
+            uint(pth.handStage()),
+            uint(EnumsAndActions.HandStage.SBPostStage),
+            "Hand stage should be SBPostStage"
+        );
+    }
+
     function test_foldPreflop() public {
         // Deploy the contract
         PokerTableHarness pth = deploy();
@@ -367,6 +459,7 @@ contract TestPokerTable is Test {
             uint(EnumsAndActions.HandStage.PreflopBetting),
             "Hand stage should still be PreflopBetting"
         );
+
         vm.prank(p1);
         pth.takeAction(EnumsAndActions.ActionType.Check, 1, 0);
 
@@ -376,21 +469,20 @@ contract TestPokerTable is Test {
             uint(EnumsAndActions.HandStage.FlopBetting),
             "Hand stage should be FlopBetting"
         );
-        // (uint8 flop1, uint8 flop2, uint8 flop3) = pth.exposed_getTblFlop(
-        //     pth.tblDataId()
-        // );
-        // assertTrue(
-        //     flop1 != 53 && flop2 != 53 && flop3 != 53,
-        //     "Flop should be dealt"
-        // );
+
+        // Would be better to check that two of three are not zeroes
+        assertTrue(
+            pth.flop0() != 0 || pth.flop1() != 0 || pth.flop2() != 0,
+            "Flop should be dealt"
+        );
 
         // Flop betting
-        vm.prank(p0);
-        pth.takeAction(EnumsAndActions.ActionType.Bet, 0, 5);
         vm.prank(p1);
-        pth.takeAction(EnumsAndActions.ActionType.Bet, 1, 10);
+        pth.takeAction(EnumsAndActions.ActionType.Bet, 1, 5);
         vm.prank(p0);
-        pth.takeAction(EnumsAndActions.ActionType.Call, 0, 0);
+        pth.takeAction(EnumsAndActions.ActionType.Bet, 0, 10);
+        vm.prank(p1);
+        pth.takeAction(EnumsAndActions.ActionType.Call, 1, 0);
 
         // Check turn
         assertEq(
@@ -398,14 +490,13 @@ contract TestPokerTable is Test {
             uint(EnumsAndActions.HandStage.TurnBetting),
             "Hand stage should be TurnBetting"
         );
-        // uint8 turn = pth.exposed_getTblTurn(pth.tblDataId());
-        // assertTrue(turn != 53, "Turn should be dealt");
+        assertTrue(pth.turn() != 0, "Turn should be dealt");
 
         // Turn betting
-        vm.prank(p0);
-        pth.takeAction(EnumsAndActions.ActionType.Check, 0, 0);
         vm.prank(p1);
         pth.takeAction(EnumsAndActions.ActionType.Check, 1, 0);
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.Check, 0, 0);
 
         // Check river
         assertEq(
@@ -413,14 +504,20 @@ contract TestPokerTable is Test {
             uint(EnumsAndActions.HandStage.RiverBetting),
             "Hand stage should be RiverBetting"
         );
-        // uint8 river = pth.exposed_getTblRiver(pth.tblDataId());
-        // assertTrue(river != 53, "River should be dealt");
+        assertTrue(pth.river() != 0, "River should be dealt");
 
         // River betting
-        vm.prank(p0);
-        pth.takeAction(EnumsAndActions.ActionType.Bet, 0, 5);
         vm.prank(p1);
-        pth.takeAction(EnumsAndActions.ActionType.Call, 1, 0);
+        pth.takeAction(EnumsAndActions.ActionType.Bet, 1, 5);
+
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.Call, 0, 0);
+
+        // Will split pot
+        vm.prank(p0);
+        pth.showCards(false, 2345);
+        vm.prank(p1);
+        pth.showCards(false, 2345);
 
         // Check final state
         assertEq(
@@ -517,6 +614,12 @@ contract TestPokerTable is Test {
         vm.prank(p1);
         pth.takeAction(EnumsAndActions.ActionType.Call, 1, 0);
 
+        vm.prank(p0);
+        pth.showCards(false, 2345);
+
+        vm.prank(p1);
+        pth.showCards(false, 2345);
+
         // Check final state
         assertEq(
             uint(pth.handStage()),
@@ -611,6 +714,13 @@ contract TestPokerTable is Test {
         vm.prank(p2);
         pth.takeAction(EnumsAndActions.ActionType.Call, 2, 0);
 
+        vm.prank(p0);
+        pth.showCards(false, 2345);
+        vm.prank(p1);
+        pth.showCards(false, 2345);
+        vm.prank(p2);
+        pth.showCards(false, 2345);
+
         // Check final state
         assertEq(
             uint(pth.handStage()),
@@ -681,13 +791,10 @@ contract TestPokerTable is Test {
         );
 
         // Check that flop is dealt
-        // (uint8 flop1, uint8 flop2, uint8 flop3) = pth.exposed_getTblFlop(
-        //     pth.tblDataId()
-        // );
-        // assertTrue(
-        //     flop1 != 53 && flop2 != 53 && flop3 != 53,
-        //     "Flop should be dealt"
-        // );
+        assertTrue(
+            pth.flop0() != 0 || pth.flop1() != 0 || pth.flop2() != 0,
+            "Flop should be dealt"
+        );
 
         // Flop betting
         vm.prank(p0);
@@ -704,8 +811,7 @@ contract TestPokerTable is Test {
         );
 
         // Check that turn is dealt
-        // uint8 turn = pth.exposed_getTblTurn(pth.tblDataId());
-        // assertTrue(turn != 53, "Turn should be dealt");
+        assertTrue(pth.turn() != 0, "Turn should be dealt");
 
         // Turn betting
         vm.prank(p0);
@@ -720,14 +826,18 @@ contract TestPokerTable is Test {
         );
 
         // Check that river is dealt
-        // uint8 river = pth.exposed_getTblRiver(pth.tblDataId());
-        // assertTrue(river != 53, "River should be dealt");
+        assertTrue(pth.river() != 0, "River should be dealt");
 
         // River betting
         vm.prank(p0);
         pth.takeAction(EnumsAndActions.ActionType.Bet, 0, 5);
         vm.prank(p2);
         pth.takeAction(EnumsAndActions.ActionType.Call, 2, 0);
+
+        vm.prank(p0);
+        pth.showCards(false, 2345);
+        vm.prank(p2);
+        pth.showCards(false, 2345);
 
         // Check final state
         assertEq(
@@ -799,10 +909,10 @@ contract TestPokerTable is Test {
         );
 
         // Check flop cards
-        // (uint8 c1, uint8 c2, uint8 c3) = pth.exposed_getTblFlop(
-        //     pth.tblDataId()
-        // );
-        // assertTrue(c1 != 53 && c2 != 53 && c3 != 53);
+        assertTrue(
+            pth.flop0() != 0 || pth.flop1() != 0 || pth.flop2() != 0,
+            "Flop should be dealt"
+        );
 
         // Flop betting
         vm.prank(p0);
@@ -1135,10 +1245,10 @@ contract TestPokerTable is Test {
         );
 
         // Check that flop is dealt
-        // (uint8 c1, uint8 c2, uint8 c3) = pth.exposed_getTblFlop(
-        //     pth.tblDataId()
-        // );
-        // assertTrue(c1 != 53 && c2 != 53 && c3 != 53, "Flop not dealt");
+        assertTrue(
+            pth.flop0() != 0 || pth.flop1() != 0 || pth.flop2() != 0,
+            "Flop should be dealt"
+        );
 
         // Flop betting
         vm.prank(p0);
@@ -1154,9 +1264,9 @@ contract TestPokerTable is Test {
         );
 
         // Check that turn is dealt
-        // uint8 turn = pth.exposed_getTblTurn(pth.tblDataId());
-        // assertTrue(turn != 53, "Turn not dealt");
+        assertTrue(pth.turn() != 0, "Turn should be dealt");
 
+        // P0 folded, so P1's turn
         assertEq(pth.whoseTurn(), 1);
     }
 }
