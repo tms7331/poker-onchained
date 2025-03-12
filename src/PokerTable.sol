@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 import "forge-std/console.sol";
 import {PokerLogic} from "./PokerLogic.sol";
 import {CardDealer} from "./CardDealer.sol";
+import {LookupTables} from "./LookupTables.sol";
 
 contract PokerTable is PokerLogic {
     // Core table values...
@@ -25,13 +26,15 @@ contract PokerTable is PokerLogic {
     uint[9] public plrBetStreet;
     uint[9] public plrBetHand;
     uint[9] public plrLastAmount;
-    uint[9] public plrShowdownVal;
+    uint16[9] public plrShowdownVal;
     ActionType[9] public plrLastActionType;
     // Temporary solution - holecards fully public until we integrate coprocessor
     uint8[9] public plrHolecardsA;
     uint8[9] public plrHolecardsB;
     // Temporary solution - holecards fully public until we integrate coprocessor
     CardDealer public cardDealer;
+
+    LookupTables private lookupTables;
     uint8 public flop0;
     uint8 public flop1;
     uint8 public flop2;
@@ -50,26 +53,8 @@ contract PokerTable is PokerLogic {
     int public closingActionCount;
     uint public lastAmount;
     ActionType public lastActionType;
-    Pot[] public pots;
 
-    struct TableInfo {
-        uint _tableId;
-        uint _smallBlind;
-        uint _bigBlind;
-        uint _minBuyin;
-        uint _maxBuyin;
-        uint _numSeats;
-        int _numActivePlayers;
-    }
-
-    struct PlayerState {
-        address addr;
-        bool inHand;
-        uint stack;
-        uint betStreet;
-        ActionType lastActionType;
-        uint lastAmount;
-    }
+    uint32[] private primes = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41];
 
     constructor(
         uint _tableId,
@@ -77,7 +62,8 @@ contract PokerTable is PokerLogic {
         uint _bigBlind,
         uint _minBuyin,
         uint _maxBuyin,
-        uint8 _numSeats
+        uint8 _numSeats,
+        address _lookupTableAddr
     ) {
         // Issue is - tableId must be unique
         tableId = _tableId;
@@ -92,6 +78,7 @@ contract PokerTable is PokerLogic {
         );
         numSeats = _numSeats;
         cardDealer = new CardDealer();
+        lookupTables = LookupTables(_lookupTableAddr);
     }
 
     function _depositOk(
@@ -286,34 +273,19 @@ contract PokerTable is PokerLogic {
         uint8 seatI,
         uint256 amount
     ) internal view returns (HandState memory) {
-        address player = msg.sender;
-        // Group player-related variables into a struct
-        PlayerState memory playerState = PlayerState({
-            addr: plrActionAddr[seatI],
-            inHand: plrInHand[seatI],
-            stack: plrStack[seatI],
-            betStreet: plrBetStreet[seatI],
-            // Switching it to use table one now
-            lastActionType: lastActionType,
-            lastAmount: plrLastAmount[seatI]
-        });
-
-        HandState memory hsNew;
-
         HandState memory hs = HandState({
-            playerStack: playerState.stack,
-            playerBetStreet: playerState.betStreet,
+            playerStack: plrStack[seatI],
+            playerBetStreet: plrBetStreet[seatI],
             handStage: handStage,
-            lastActionType: playerState.lastActionType,
-            lastActionAmount: playerState.lastAmount,
+            lastActionType: lastActionType,
+            lastAmount: plrLastAmount[seatI],
             transitionNextStreet: false,
             facingBet: facingBet,
             lastRaise: lastRaise,
             button: button
         });
         // Transition the hand state
-        hsNew = _transitionHandState(hs, actionType, amount);
-        return hsNew;
+        return _transitionHandState(hs, actionType, amount);
     }
 
     function allIn() internal view returns (bool) {
@@ -537,12 +509,16 @@ contract PokerTable is PokerLogic {
 
         lastRaise = hsNew.lastRaise;
         lastActionType = hsNew.lastActionType;
-        lastAmount = hsNew.lastActionAmount;
+        lastAmount = hsNew.lastAmount;
 
         _transitionHandStage(handStage);
     }
 
-    function showCards(bool muck, uint lookupVal) public {
+    function showCards(
+        bool muck,
+        bool isFlush,
+        bool[7] memory useCards
+    ) public {
         require(handStage == HandStage.Showdown, "Not showdown stage!");
         // TODO - if only one player they should not need to show cards
         // Fully trusting front end to feed in lookupVal, will replace with proof
@@ -551,7 +527,11 @@ contract PokerTable is PokerLogic {
             // Worst possible lookupVal - think we don't have to do this since it was initialized to this
             plrShowdownVal[whoseTurn] = 8000;
         } else {
-            plrShowdownVal[whoseTurn] = lookupVal;
+            plrShowdownVal[whoseTurn] = _evaluate_hand(
+                whoseTurn,
+                useCards,
+                isFlush
+            );
         }
 
         (whoseTurn, closingActionCount) = _incrementWhoseTurn(
@@ -602,5 +582,60 @@ contract PokerTable is PokerLogic {
                 }
             }
         }
+    }
+
+    function _evaluate_hand(
+        uint8 seatI,
+        bool[7] memory use_cards,
+        bool is_flush
+    ) internal view returns (uint16) {
+        uint bool_count = 0;
+        uint8[7] memory cards = [
+            plrHolecardsA[seatI],
+            plrHolecardsB[seatI],
+            flop0,
+            flop1,
+            flop2,
+            turn,
+            river
+        ];
+
+        uint32 lookupMult = 1;
+        uint16 lookupVal;
+        if (is_flush) {
+            // TODO - clean up this logic
+            uint8 suitCheck = 123;
+            for (uint i = 0; i < 7; i++) {
+                if (use_cards[i]) {
+                    bool_count += 1;
+                    uint8 suit = cards[i] / 13;
+                    // Hacky way to verify all cards are of the same suit
+                    if (suitCheck != 123) {
+                        require(
+                            suit == suitCheck,
+                            "All cards must be of the same suit!"
+                        );
+                    } else {
+                        suitCheck = suit;
+                    }
+                    lookupMult = lookupMult * primes[(cards[i] % 13)];
+                }
+            }
+            lookupVal = lookupTables.lookupFlush(lookupMult);
+        } else {
+            for (uint i = 0; i < 7; i++) {
+                if (use_cards[i]) {
+                    bool_count += 1;
+                    lookupMult = lookupMult * primes[(cards[i] % 13)];
+                }
+            }
+            lookupVal = lookupTables.lookupBasic(lookupMult);
+        }
+
+        // Must use exactly 5 cards
+        require(bool_count == 5, "Must use exactly 5 cards!");
+        // This can only happen if they passed in an invalid lookupMult!
+        require(lookupVal != 0, "Lookup value is 0!");
+        return lookupVal;
     }
 }

@@ -24,7 +24,7 @@ contract TestPokerLogic is Test, EnumsAndActions {
         logic = new PokerLogicHarness();
     }
 
-    function test_buildPotsAllIn() public {
+    function test_buildPotsAllIn() public view {
         uint8 numSeats = 2;
         bool[9] memory plrInHand;
         uint[9] memory plrBetHand;
@@ -64,7 +64,7 @@ contract TestPokerLogic is Test, EnumsAndActions {
         assertTrue(pots[1].players[1], "Player2 should be in side pot");
     }
 
-    function test_buildPotsFoldedPlayer() public {
+    function test_buildPotsFoldedPlayer() public view {
         uint8 numSeats = 3;
         bool[9] memory plrInHand;
         uint[9] memory plrBetHand;

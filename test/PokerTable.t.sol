@@ -5,6 +5,17 @@ import "forge-std/Test.sol";
 import "forge-std/console.sol";
 import {EnumsAndActions} from "../src/EnumsAndActions.sol";
 import {PokerTable} from "../src/PokerTable.sol";
+
+contract MockLookupTables {
+    function lookupFlush(uint32) public pure returns (uint16) {
+        return 1234;
+    }
+
+    function lookupBasic(uint32) public pure returns (uint16) {
+        return 1234;
+    }
+}
+
 // Contract with all internal methods exposed
 contract PokerTableHarness is PokerTable {
     constructor(
@@ -13,7 +24,8 @@ contract PokerTableHarness is PokerTable {
         uint _bigBlind,
         uint _minBuyin,
         uint _maxBuyin,
-        uint8 _numSeats
+        uint8 _numSeats,
+        address _lookupTableAddr
     )
         PokerTable(
             _tableId,
@@ -21,13 +33,15 @@ contract PokerTableHarness is PokerTable {
             _bigBlind,
             _minBuyin,
             _maxBuyin,
-            _numSeats
+            _numSeats,
+            _lookupTableAddr
         )
     {}
 }
 
 contract TestPokerTable is Test {
     function deploy() internal returns (PokerTableHarness) {
+        MockLookupTables mockLookupTables = new MockLookupTables();
         uint tableId = 0;
         uint smallBlind = 1;
         uint bigBlind = 2;
@@ -40,7 +54,8 @@ contract TestPokerTable is Test {
             bigBlind,
             minBuyin,
             maxBuyin,
-            numPlayers
+            numPlayers,
+            address(mockLookupTables)
         );
         return pth;
     }
@@ -416,9 +431,17 @@ contract TestPokerTable is Test {
 
         // Showdown
         vm.prank(p1);
-        pth.showCards(false, 1234);
+        pth.showCards(
+            false,
+            false,
+            [true, true, true, true, true, false, false]
+        );
         vm.prank(p0);
-        pth.showCards(false, 1234);
+        pth.showCards(
+            false,
+            false,
+            [true, true, true, true, true, false, false]
+        );
 
         // Should be on SBPostStage
         assertEq(
@@ -572,9 +595,17 @@ contract TestPokerTable is Test {
 
         // Will split pot
         vm.prank(p1);
-        pth.showCards(false, 2345);
+        pth.showCards(
+            false,
+            false,
+            [true, true, true, true, true, false, false]
+        );
         vm.prank(p0);
-        pth.showCards(false, 2345);
+        pth.showCards(
+            false,
+            false,
+            [true, true, true, true, true, false, false]
+        );
 
         // Check final state
         assertEq(
@@ -672,9 +703,17 @@ contract TestPokerTable is Test {
         pth.takeAction(EnumsAndActions.ActionType.Call, 1, 0);
 
         vm.prank(p1);
-        pth.showCards(false, 2345);
+        pth.showCards(
+            false,
+            false,
+            [true, true, true, true, true, false, false]
+        );
         vm.prank(p0);
-        pth.showCards(false, 2345);
+        pth.showCards(
+            false,
+            false,
+            [true, true, true, true, true, false, false]
+        );
 
         // Check final state
         assertEq(
@@ -771,11 +810,23 @@ contract TestPokerTable is Test {
         pth.takeAction(EnumsAndActions.ActionType.Call, 0, 0);
 
         vm.prank(p1);
-        pth.showCards(false, 2345);
+        pth.showCards(
+            false,
+            false,
+            [true, true, true, true, true, false, false]
+        );
         vm.prank(p2);
-        pth.showCards(false, 2345);
+        pth.showCards(
+            false,
+            false,
+            [true, true, true, true, true, false, false]
+        );
         vm.prank(p0);
-        pth.showCards(false, 2345);
+        pth.showCards(
+            false,
+            false,
+            [true, true, true, true, true, false, false]
+        );
 
         // Check final state
         assertEq(
@@ -892,9 +943,17 @@ contract TestPokerTable is Test {
         pth.takeAction(EnumsAndActions.ActionType.Call, 2, 0);
 
         vm.prank(p0);
-        pth.showCards(false, 2345);
+        pth.showCards(
+            false,
+            false,
+            [true, true, true, true, true, false, false]
+        );
         vm.prank(p2);
-        pth.showCards(false, 2345);
+        pth.showCards(
+            false,
+            false,
+            [true, true, true, true, true, false, false]
+        );
 
         // Check final state
         assertEq(
@@ -1040,11 +1099,23 @@ contract TestPokerTable is Test {
         pth.takeAction(EnumsAndActions.ActionType.Call, 2, 98);
 
         vm.prank(p0);
-        pth.showCards(false, 1234);
+        pth.showCards(
+            false,
+            false,
+            [true, true, true, true, true, false, false]
+        );
         vm.prank(p1);
-        pth.showCards(false, 1234);
+        pth.showCards(
+            false,
+            false,
+            [true, true, true, true, true, false, false]
+        );
         vm.prank(p2);
-        pth.showCards(false, 1234);
+        pth.showCards(
+            false,
+            false,
+            [true, true, true, true, true, false, false]
+        );
 
         // Should progress to river and split pot
         assertEq(
@@ -1115,11 +1186,23 @@ contract TestPokerTable is Test {
         pth.takeAction(EnumsAndActions.ActionType.Call, 3, 0);
 
         vm.prank(p0);
-        pth.showCards(false, 1234);
+        pth.showCards(
+            false,
+            false,
+            [true, true, true, true, true, false, false]
+        );
         vm.prank(p2);
-        pth.showCards(false, 1234);
+        pth.showCards(
+            false,
+            false,
+            [true, true, true, true, true, false, false]
+        );
         vm.prank(p3);
-        pth.showCards(false, 1234);
+        pth.showCards(
+            false,
+            false,
+            [true, true, true, true, true, false, false]
+        );
 
         assertEq(
             uint(pth.handStage()),
@@ -1198,11 +1281,23 @@ contract TestPokerTable is Test {
         pth.takeAction(EnumsAndActions.ActionType.Call, 3, 0);
 
         vm.prank(p0);
-        pth.showCards(false, 1234);
+        pth.showCards(
+            false,
+            false,
+            [true, true, true, true, true, false, false]
+        );
         vm.prank(p2);
-        pth.showCards(false, 1234);
+        pth.showCards(
+            false,
+            false,
+            [true, true, true, true, true, false, false]
+        );
         vm.prank(p3);
-        pth.showCards(false, 1234);
+        pth.showCards(
+            false,
+            false,
+            [true, true, true, true, true, false, false]
+        );
 
         assertEq(
             uint(pth.handStage()),
@@ -1280,10 +1375,6 @@ contract TestPokerTable is Test {
         address p0 = address(0x123);
         address p1 = address(0x456);
         address p2 = address(0x789);
-        // Initialize the table
-        // bytes memory initData = pth.initTable();
-        // (bool success, ) = address(pth).call(initData);
-        // require(success, "Table initialization failed");
 
         // Join table
         vm.prank(p2);

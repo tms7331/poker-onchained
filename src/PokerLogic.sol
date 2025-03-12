@@ -22,7 +22,7 @@ contract PokerLogic is EnumsAndActions {
             newHandState.lastRaise = amount;
             newHandState.playerStack -= amount;
             newHandState.playerBetStreet = amount;
-            newHandState.lastActionAmount = amount;
+            newHandState.lastAmount = amount;
         } else if (actionType == ActionType.BBPost) {
             // CHECKS:
             // we're at the proper stage
@@ -38,7 +38,7 @@ contract PokerLogic is EnumsAndActions {
             newHandState.lastRaise = amount;
             newHandState.playerStack -= amount;
             newHandState.playerBetStreet = amount;
-            newHandState.lastActionAmount = amount;
+            newHandState.lastAmount = amount;
         } else if (actionType == ActionType.Bet) {
             // CHECKS:
             // facing action is valid
@@ -59,11 +59,11 @@ contract PokerLogic is EnumsAndActions {
             newHandState.playerBetStreet = amount;
             newHandState.facingBet = amount;
             newHandState.lastRaise = amount - handState.facingBet;
-            newHandState.lastActionAmount = newBetAmount;
+            newHandState.lastAmount = newBetAmount;
         } else if (actionType == ActionType.Fold) {
             // CHECKS:
             // None?  But what if someone folds before they post SB/BB?
-            newHandState.lastActionAmount = 0;
+            newHandState.lastAmount = 0;
         } else if (actionType == ActionType.Call) {
             // CHECKS:
             // facing action is valid - easier to check for a facing bet?
@@ -75,7 +75,7 @@ contract PokerLogic is EnumsAndActions {
             }
             newHandState.playerStack -= newCallAmount;
             newHandState.playerBetStreet += newCallAmount;
-            newHandState.lastActionAmount = newCallAmount;
+            newHandState.lastAmount = newCallAmount;
         } else if (actionType == ActionType.Check) {
             // CHECKS:
             // Either facing amount is 0
@@ -85,7 +85,7 @@ contract PokerLogic is EnumsAndActions {
                 handState.facingBet == handState.playerBetStreet,
                 "Not a valid check!"
             );
-            newHandState.lastActionAmount = 0;
+            newHandState.lastAmount = 0;
         }
 
         // We'll get an underflow if they don't have enough funds

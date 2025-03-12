@@ -32,17 +32,12 @@ contract EnumsAndActions {
         bool[] players;
     }
 
-    struct Action {
-        uint256 amount;
-        ActionType act;
-    }
-
     struct HandState {
         uint256 playerStack;
         uint256 playerBetStreet;
         HandStage handStage;
         ActionType lastActionType;
-        uint256 lastActionAmount;
+        uint256 lastAmount;
         bool transitionNextStreet;
         uint256 facingBet;
         uint256 lastRaise;
