@@ -34,13 +34,8 @@ contract EnumsAndActions {
 
     struct HandState {
         uint256 playerStack;
-        uint256 playerBetStreet;
-        HandStage handStage;
-        ActionType lastActionType;
-        uint256 lastAmount;
-        bool transitionNextStreet;
-        uint256 facingBet;
-        uint256 lastRaise;
-        uint256 button;
+        uint256 playerBetThisStreet;
+        uint256 maxBetThisStreet;
+        uint256 lastRaiseAmount;
     }
 }

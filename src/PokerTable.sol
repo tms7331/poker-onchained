@@ -32,27 +32,22 @@ contract PokerTable is PokerLogic {
     uint8[9] public plrHolecardsA;
     uint8[9] public plrHolecardsB;
     // Temporary solution - holecards fully public until we integrate coprocessor
-    CardDealer public cardDealer;
-
+    CardDealer private cardDealer;
     LookupTables private lookupTables;
     uint8 public flop0;
     uint8 public flop1;
     uint8 public flop2;
     uint8 public turn;
     uint8 public river;
-    // In HU hands button is SB
-    bool public huHand;
 
     // Table data we need:
     HandStage public handStage;
     uint8 public button;
     uint8 public whoseTurn;
-    uint public facingBet;
-    uint public lastRaise;
-    uint public potInitial;
     int public closingActionCount;
-    uint public lastAmount;
-    ActionType public lastActionType;
+    // The largest amount any player has put in on a given street
+    uint public maxBetThisStreet;
+    uint public lastRaiseAmount;
 
     uint32[] private primes = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41];
 
@@ -190,11 +185,8 @@ contract PokerTable is PokerLogic {
         );
 
         closingActionCount = 0;
-
-        facingBet = 0;
-        lastRaise = 0;
-        lastAmount = 0;
-        lastActionType = ActionType.Null;
+        maxBetThisStreet = 0;
+        lastRaiseAmount = 0;
 
         // Reset player betting state
         for (uint256 i = 0; i < numSeats; i++) {
@@ -206,12 +198,9 @@ contract PokerTable is PokerLogic {
     }
 
     function _nextHand() internal {
-        potInitial = 0;
         closingActionCount = 0;
-        facingBet = 0;
-        lastRaise = 0;
-        lastActionType = ActionType.Null;
-        lastAmount = 0;
+        maxBetThisStreet = 0;
+        lastRaiseAmount = 0;
 
         flop0 = 0;
         flop1 = 0;
@@ -266,6 +255,9 @@ contract PokerTable is PokerLogic {
             );
         }
         handId++;
+
+        // Have to reset the deck after each hand
+        cardDealer.reset();
     }
 
     function _processAction(
@@ -275,20 +267,16 @@ contract PokerTable is PokerLogic {
     ) internal view returns (HandState memory) {
         HandState memory hs = HandState({
             playerStack: plrStack[seatI],
-            playerBetStreet: plrBetStreet[seatI],
-            handStage: handStage,
-            lastActionType: lastActionType,
-            lastAmount: plrLastAmount[seatI],
-            transitionNextStreet: false,
-            facingBet: facingBet,
-            lastRaise: lastRaise,
-            button: button
+            playerBetThisStreet: plrBetStreet[seatI],
+            lastRaiseAmount: lastRaiseAmount,
+            maxBetThisStreet: maxBetThisStreet
         });
         // Transition the hand state
         return _transitionHandState(hs, actionType, amount);
     }
 
     function allIn() internal view returns (bool) {
+        // Idea: store a bitmap and sum the bits instead?  And cache a boolean?
         // TODO - definitely cleaner logic for this, look to refactor
         uint count = 0;
         for (uint256 i = 0; i < numSeats; i++) {
@@ -477,17 +465,22 @@ contract PokerTable is PokerLogic {
     ) external {
         require(whoseTurn == seatI, "Not your turn!");
         require(plrActionAddr[seatI] == msg.sender, "Not your seat!");
+
+        // Make sure it's not one of the other stages where we can't act
+        require(
+            handStage != HandStage.Showdown && handStage != HandStage.Settle,
+            "Not valid betting stage!"
+        );
         HandState memory hsNew = _processAction(actionType, seatI, amount);
 
         plrStack[seatI] = hsNew.playerStack;
-        plrBetStreet[seatI] = hsNew.playerBetStreet;
+        plrBetStreet[seatI] = hsNew.playerBetThisStreet;
         plrLastAmount[seatI] = amount;
         plrLastActionType[seatI] = actionType;
         if (actionType == ActionType.Fold) {
             plrInHand[seatI] = false;
         }
-
-        facingBet = hsNew.facingBet;
+        maxBetThisStreet = hsNew.maxBetThisStreet;
 
         // Should either be reset or incremented
         if (
@@ -507,9 +500,7 @@ contract PokerTable is PokerLogic {
             false
         );
 
-        lastRaise = hsNew.lastRaise;
-        lastActionType = hsNew.lastActionType;
-        lastAmount = hsNew.lastAmount;
+        lastRaiseAmount = hsNew.lastRaiseAmount;
 
         _transitionHandStage(handStage);
     }

@@ -14,84 +14,73 @@ contract PokerLogic is EnumsAndActions {
         if (actionType == ActionType.SBPost) {
             // CHECKS:
             // we're at the proper stage
-            require(
-                handState.handStage == HandStage.SBPostStage,
-                "Not SBPostStage!"
-            );
-            newHandState.facingBet = amount;
-            newHandState.lastRaise = amount;
+            // amount is correct SB amount
+            newHandState.maxBetThisStreet = amount;
+            newHandState.lastRaiseAmount = amount;
             newHandState.playerStack -= amount;
-            newHandState.playerBetStreet = amount;
-            newHandState.lastAmount = amount;
+            newHandState.playerBetThisStreet = amount;
         } else if (actionType == ActionType.BBPost) {
             // CHECKS:
             // we're at the proper stage
-            require(
-                handState.lastActionType == ActionType.SBPost,
-                "Not SBPost!"
-            );
-            require(
-                handState.handStage == HandStage.BBPostStage,
-                "Not BBPostStage!"
-            );
-            newHandState.facingBet = amount;
-            newHandState.lastRaise = amount;
+            // amount is correct BB amount
+            newHandState.maxBetThisStreet = amount;
+            newHandState.lastRaiseAmount = amount;
             newHandState.playerStack -= amount;
-            newHandState.playerBetStreet = amount;
-            newHandState.lastAmount = amount;
+            newHandState.playerBetThisStreet = amount;
         } else if (actionType == ActionType.Bet) {
             // CHECKS:
-            // facing action is valid
-            // bet amount is valid
-            require(
-                handState.lastActionType == ActionType.Null ||
-                    handState.lastActionType == ActionType.BBPost ||
-                    handState.lastActionType == ActionType.Bet ||
-                    handState.lastActionType == ActionType.Fold ||
-                    handState.lastActionType == ActionType.Call ||
-                    handState.lastActionType == ActionType.Check,
-                "Not a valid bet!"
-            );
-            // TODO - need more careful check here, need to be tracking raise amounts
-            require(amount > handState.facingBet, "Invalid bet amount");
-            uint newBetAmount = amount - handState.playerBetStreet;
+            // Two cases: if all-in, any amount is valid
+            // Otherwise, amount must be greater than maxBetThisStreet + lastRaiseAmount
+            // Will revert if amount is less than maxBetThisStreet, so don't need explicit check
+            uint newBetAmount = amount - handState.playerBetThisStreet;
+            if (handState.playerStack > newBetAmount) {
+                // Not all-in
+                require(
+                    amount >=
+                        handState.maxBetThisStreet + handState.lastRaiseAmount,
+                    "Invalid bet amount"
+                );
+            } else {
+                // All-in
+            }
+
+            uint raiseAmount = amount - handState.maxBetThisStreet;
+
             newHandState.playerStack -= newBetAmount;
-            newHandState.playerBetStreet = amount;
-            newHandState.facingBet = amount;
-            newHandState.lastRaise = amount - handState.facingBet;
-            newHandState.lastAmount = newBetAmount;
+            newHandState.playerBetThisStreet = amount;
+            newHandState.maxBetThisStreet = amount;
+
+            // If all-in, the raise amount could be smaller than the old one
+            if (raiseAmount > handState.lastRaiseAmount) {
+                newHandState.lastRaiseAmount = raiseAmount;
+            }
         } else if (actionType == ActionType.Fold) {
             // CHECKS:
-            // None?  But what if someone folds before they post SB/BB?
-            newHandState.lastAmount = 0;
         } else if (actionType == ActionType.Call) {
             // CHECKS:
-            // facing action is valid - easier to check for a facing bet?
-            require(handState.facingBet > 0, "Not a valid call!");
-            uint newCallAmount = handState.facingBet -
-                handState.playerBetStreet;
+            require(handState.maxBetThisStreet > 0, "Not a valid call!");
+            // Do we need this check?
+            require(
+                handState.maxBetThisStreet > handState.playerBetThisStreet,
+                "Not a valid call!"
+            );
+            // Adjust sizes for all-in calls
+            uint newCallAmount = handState.maxBetThisStreet -
+                handState.playerBetThisStreet;
             if (newCallAmount > handState.playerStack) {
                 newCallAmount = handState.playerStack;
             }
             newHandState.playerStack -= newCallAmount;
-            newHandState.playerBetStreet += newCallAmount;
-            newHandState.lastAmount = newCallAmount;
+            newHandState.playerBetThisStreet += newCallAmount;
         } else if (actionType == ActionType.Check) {
             // CHECKS:
-            // Either facing amount is 0
+            // Generally - facing amount is 0
             // Or we're BB and SB has called
-            // TODO - would this let SB check?
             require(
-                handState.facingBet == handState.playerBetStreet,
+                handState.maxBetThisStreet == handState.playerBetThisStreet,
                 "Not a valid check!"
             );
-            newHandState.lastAmount = 0;
         }
-
-        // We'll get an underflow if they don't have enough funds
-        // require(newHandState.playerStack >= 0, "Insufficient funds");
-        newHandState.lastActionType = actionType;
-
         return newHandState;
     }
 
