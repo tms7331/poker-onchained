@@ -25,9 +25,7 @@ contract PokerTable is PokerLogic {
     bool[9] public plrAutoPost;
     uint[9] public plrBetStreet;
     uint[9] public plrBetHand;
-    uint[9] public plrLastAmount;
     uint16[9] public plrShowdownVal;
-    ActionType[9] public plrLastActionType;
     // Temporary solution - holecards fully public until we integrate coprocessor
     uint8[9] public plrHolecardsA;
     uint8[9] public plrHolecardsB;
@@ -110,8 +108,6 @@ contract PokerTable is PokerLogic {
         plrAutoPost[seatI] = autoPost;
         plrBetStreet[seatI] = 0;
         plrShowdownVal[seatI] = 0;
-        plrLastActionType[seatI] = ActionType.Null;
-        plrLastAmount[seatI] = 0;
 
         // TODO - need to initialize whoseTurn and button properly
         // HandStage handStage = _getTblHandStage(tblDataId);
@@ -192,8 +188,6 @@ contract PokerTable is PokerLogic {
         for (uint256 i = 0; i < numSeats; i++) {
             plrBetHand[i] += plrBetStreet[i];
             plrBetStreet[i] = 0;
-            plrLastActionType[i] = ActionType.Null;
-            plrLastAmount[i] = 0;
         }
     }
 
@@ -214,8 +208,6 @@ contract PokerTable is PokerLogic {
                 plrHolecardsA[i] = 0;
                 plrHolecardsB[i] = 0;
 
-                plrLastActionType[i] = ActionType.Null;
-                plrLastAmount[i] = 0;
                 plrBetStreet[i] = 0;
                 plrBetHand[i] = 0;
                 plrShowdownVal[i] = 8000;
@@ -475,12 +467,12 @@ contract PokerTable is PokerLogic {
 
         plrStack[seatI] = hsNew.playerStack;
         plrBetStreet[seatI] = hsNew.playerBetThisStreet;
-        plrLastAmount[seatI] = amount;
-        plrLastActionType[seatI] = actionType;
+        maxBetThisStreet = hsNew.maxBetThisStreet;
+        lastRaiseAmount = hsNew.lastRaiseAmount;
+
         if (actionType == ActionType.Fold) {
             plrInHand[seatI] = false;
         }
-        maxBetThisStreet = hsNew.maxBetThisStreet;
 
         // Should either be reset or incremented
         if (
@@ -499,8 +491,6 @@ contract PokerTable is PokerLogic {
             closingActionCount,
             false
         );
-
-        lastRaiseAmount = hsNew.lastRaiseAmount;
 
         _transitionHandStage(handStage);
     }
