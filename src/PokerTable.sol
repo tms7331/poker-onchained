@@ -458,11 +458,29 @@ contract PokerTable is PokerLogic {
         require(whoseTurn == seatI, "Not your turn!");
         require(plrActionAddr[seatI] == msg.sender, "Not your seat!");
 
-        // Make sure it's not one of the other stages where we can't act
-        require(
-            handStage != HandStage.Showdown && handStage != HandStage.Settle,
-            "Not valid betting stage!"
-        );
+        // Ensure we can only do SB and BB posts at the right time
+        if (actionType == ActionType.SBPost) {
+            require(amount == smallBlind, "Invalid SB post amount!");
+            require(
+                handStage == HandStage.SBPostStage,
+                "Not valid betting stage!"
+            );
+        } else if (actionType == ActionType.BBPost) {
+            require(
+                handStage == HandStage.BBPostStage,
+                "Not valid betting stage!"
+            );
+            require(amount == bigBlind, "Invalid BB post amount!");
+        } else {
+            // Make sure it's not one of the other stages where we can't act
+            require(
+                handStage != HandStage.SBPostStage &&
+                    handStage != HandStage.BBPostStage &&
+                    handStage != HandStage.Showdown &&
+                    handStage != HandStage.Settle,
+                "Not valid betting stage!"
+            );
+        }
         HandState memory hsNew = _processAction(actionType, seatI, amount);
 
         plrStack[seatI] = hsNew.playerStack;

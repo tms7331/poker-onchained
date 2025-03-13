@@ -17,6 +17,8 @@ contract PokerLogic is EnumsAndActions {
             // amount is correct SB amount
             newHandState.maxBetThisStreet = amount;
             newHandState.lastRaiseAmount = amount;
+            // We'll revert if they don't have enough stack
+            // require(handState.playerStack >= amount, "Not enough stack!");
             newHandState.playerStack -= amount;
             newHandState.playerBetThisStreet = amount;
         } else if (actionType == ActionType.BBPost) {
@@ -24,7 +26,9 @@ contract PokerLogic is EnumsAndActions {
             // we're at the proper stage
             // amount is correct BB amount
             newHandState.maxBetThisStreet = amount;
+            // Note - this is correct, if blinds are 1/2, minraise is 2, they CANNOT raise 1
             newHandState.lastRaiseAmount = amount;
+            // require(handState.playerStack >= amount, "Not enough stack!");
             newHandState.playerStack -= amount;
             newHandState.playerBetThisStreet = amount;
         } else if (actionType == ActionType.Bet) {
