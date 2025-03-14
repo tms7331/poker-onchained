@@ -174,9 +174,9 @@ contract PokerLogic is EnumsAndActions {
         uint8 whoseTurn,
         bool[9] memory inHand,
         uint[9] memory stacks,
-        int closingActionCount,
+        int8 closingActionCount,
         bool isShowdown
-    ) internal pure returns (uint8, int) {
+    ) internal pure returns (uint8, uint8) {
         // bool incremented = false;
         for (uint256 i = 1; i <= numSeats; i++) {
             // Go around the table in order, starting from whoever's turn it is
@@ -195,7 +195,7 @@ contract PokerLogic is EnumsAndActions {
         // require(incremented, "Failed to increment whoseTurn!");
         // TODO - is this a valid check?
         // require(closingActionCount <= (numSeats + 1), "Too high closingActionCount!");
-        return (whoseTurn, closingActionCount);
+        return (whoseTurn, uint8(closingActionCount));
     }
 
     function _incrementButton(

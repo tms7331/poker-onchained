@@ -42,7 +42,7 @@ contract PokerTable is PokerLogic {
     HandStage public handStage;
     uint8 public button;
     uint8 public whoseTurn;
-    int public closingActionCount;
+    uint8 public closingActionCount;
     // The largest amount any player has put in on a given street
     uint public maxBetThisStreet;
     uint public lastRaiseAmount;
@@ -123,7 +123,7 @@ contract PokerTable is PokerLogic {
                     button,
                     plrInHand,
                     plrStack,
-                    closingActionCount,
+                    int8(closingActionCount),
                     false
                 );
             }
@@ -176,7 +176,7 @@ contract PokerTable is PokerLogic {
             button,
             plrInHand,
             plrStack,
-            closingActionCount,
+            int8(closingActionCount),
             isShowdown
         );
 
@@ -213,18 +213,9 @@ contract PokerTable is PokerLogic {
                 plrShowdownVal[i] = 8000;
 
                 // Handle bust and sitting out conditions
-                if (plrStack[i] <= smallBlind) {
+                if (plrStack[i] < bigBlind) {
                     plrSittingOut[i] = true;
                 }
-                // TODO - what was this logic?  Why can't have both?
-                // ) {
-                //     seats[seat_i].inHand = false;
-                //     seats[seat_i].sittingOut = true;
-                // } else {
-                //     seats[seat_i].inHand = true;
-                //     seats[seat_i].sittingOut = false;
-                // }
-
                 if (!plrSittingOut[i]) {
                     plrInHand[i] = true;
                 } else {
@@ -242,7 +233,7 @@ contract PokerTable is PokerLogic {
                 button,
                 plrInHand,
                 plrStack,
-                closingActionCount,
+                int8(closingActionCount),
                 false
             );
         }
@@ -323,7 +314,7 @@ contract PokerTable is PokerLogic {
     }
 
     function _handStageOverCheck() internal view returns (bool) {
-        return (closingActionCount > 0) && uint(closingActionCount) >= numSeats;
+        return closingActionCount >= numSeats;
     }
 
     function _showdownCheck() internal returns (bool skipShowCards) {
@@ -477,12 +468,15 @@ contract PokerTable is PokerLogic {
         }
 
         // Should either be reset or incremented
+        int8 closingActionCount_;
         if (
             actionType == ActionType.SBPost || actionType == ActionType.BBPost
         ) {
-            closingActionCount = -1;
+            closingActionCount_ = -1;
         } else if (actionType == ActionType.Bet) {
-            closingActionCount = 0;
+            closingActionCount_ = 0;
+        } else {
+            closingActionCount_ = int8(closingActionCount);
         }
 
         (whoseTurn, closingActionCount) = _incrementWhoseTurn(
@@ -490,7 +484,7 @@ contract PokerTable is PokerLogic {
             whoseTurn,
             plrInHand,
             plrStack,
-            closingActionCount,
+            closingActionCount_,
             false
         );
 
@@ -522,7 +516,7 @@ contract PokerTable is PokerLogic {
             whoseTurn,
             plrInHand,
             plrStack,
-            closingActionCount,
+            int8(closingActionCount),
             true
         );
 
