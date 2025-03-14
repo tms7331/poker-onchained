@@ -265,8 +265,8 @@ contract TestPokerTable is Test {
         vm.prank(p1);
         pth.joinTable(1, p1, 100, false);
 
-        assertEq(uint(pth.button()), 0, "Button should be 1");
-        assertEq(uint(pth.whoseTurn()), 0, "Whose turn should be 1");
+        assertEq(uint(pth.button()), 0, "Button should be 0");
+        assertEq(uint(pth.whoseTurn()), 0, "Whose turn should be 0");
 
         // Post blinds
         vm.prank(p0);

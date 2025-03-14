@@ -47,6 +47,8 @@ contract PokerTable is PokerLogic {
     uint public maxBetThisStreet;
     uint public lastRaiseAmount;
 
+    bool public actionComplete;
+
     uint32[] private primes = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41];
 
     constructor(
@@ -196,6 +198,8 @@ contract PokerTable is PokerLogic {
         maxBetThisStreet = 0;
         lastRaiseAmount = 0;
 
+        actionComplete = false;
+
         flop0 = 0;
         flop1 = 0;
         flop2 = 0;
@@ -258,32 +262,30 @@ contract PokerTable is PokerLogic {
         return _transitionHandState(hs, actionType, amount);
     }
 
-    function allIn() internal view returns (bool) {
-        // Idea: store a bitmap and sum the bits instead?  And cache a boolean?
-        // TODO - definitely cleaner logic for this, look to refactor
-        uint count = 0;
-        for (uint256 i = 0; i < numSeats; i++) {
-            bool cond1 = plrActionAddr[i] != address(0);
-            bool cond2 = plrInHand[i] == true;
-            bool cond3 = plrStack[i] > 0;
-            if (cond1 && cond2 && cond3) {
-                count++;
-            }
-        }
-        return count <= 1 && closingActionCount == 0;
-    }
-
-    function allFolded() internal view returns (bool) {
-        // TODO - definitely cleaner logic for this, look to refactor
-        uint count = 0;
-        for (uint256 i = 0; i < numSeats; i++) {
-            if (plrActionAddr[i] != address(0)) {
-                if (plrInHand[i] == true) {
-                    count++;
+    function actionCompleteCheck() internal returns (bool) {
+        // Making two checks:
+        // 1. If there's only one active player - everyone else has folded and hand is instantly over
+        // 2. If there's only one player with stack > 0, that round needs to finish
+        // (as if someone goes all-in, there is currently one player with stack > 0,
+        // but the other player needs to act before we can fast forward through the other streets)
+        if (!actionComplete) {
+            uint inHandCount = 0;
+            uint inHandStackCount = 0;
+            for (uint256 i = 0; i < numSeats; i++) {
+                if (plrActionAddr[i] != address(0)) {
+                    if (plrInHand[i] == true) {
+                        inHandCount++;
+                        if (plrStack[i] > 0) {
+                            inHandStackCount++;
+                        }
+                    }
                 }
             }
+            bool allFolded = inHandCount == 1;
+            bool allAllIn = inHandStackCount <= 1 && closingActionCount == 0;
+            actionComplete = allFolded || allAllIn;
         }
-        return count == 1;
+        return actionComplete;
     }
 
     function _dealHolecards() internal {
@@ -358,7 +360,7 @@ contract PokerTable is PokerLogic {
         }
         // Preflop Betting
         else if (hs == HandStage.PreflopBetting) {
-            if (_handStageOverCheck() || allFolded() || allIn()) {
+            if (_handStageOverCheck() || actionCompleteCheck()) {
                 _nextStreet(false);
                 return _transitionHandStage(HandStage.FlopDeal);
             }
@@ -371,7 +373,7 @@ contract PokerTable is PokerLogic {
         }
         // Flop Betting
         else if (hs == HandStage.FlopBetting) {
-            if (_handStageOverCheck() || allFolded() || allIn()) {
+            if (_handStageOverCheck() || actionCompleteCheck()) {
                 _nextStreet(false);
                 return _transitionHandStage(HandStage.TurnDeal);
             }
@@ -384,7 +386,7 @@ contract PokerTable is PokerLogic {
         }
         // Turn Betting
         else if (hs == HandStage.TurnBetting) {
-            if (_handStageOverCheck() || allFolded() || allIn()) {
+            if (_handStageOverCheck() || actionCompleteCheck()) {
                 _nextStreet(false);
                 return _transitionHandStage(HandStage.RiverDeal);
             }
@@ -397,7 +399,7 @@ contract PokerTable is PokerLogic {
         }
         // River Betting
         else if (hs == HandStage.RiverBetting) {
-            if (_handStageOverCheck() || allFolded() || allIn()) {
+            if (_handStageOverCheck() || actionCompleteCheck()) {
                 // Want to run this a final time to get the final bets calculated
                 _nextStreet(true);
                 return _transitionHandStage(HandStage.Showdown);
