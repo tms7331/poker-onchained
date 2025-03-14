@@ -353,91 +353,74 @@ contract PokerTable is PokerLogic {
 
     // Below this point - try to refactor and move to logic file?
 
-    function _transitionHandStage(HandStage hs) internal {
+    function _transitionHandStage(HandStage hs) internal returns (HandStage) {
         // Blinds
         if (hs == HandStage.SBPostStage) {
-            handStage = HandStage.BBPostStage;
-            // _transitionHandStage(HandStage.BBPostStage);
-            return;
+            return HandStage.BBPostStage;
         } else if (hs == HandStage.BBPostStage) {
-            handStage = HandStage.HolecardsDeal;
-            _transitionHandStage(HandStage.HolecardsDeal);
-            return;
+            return _transitionHandStage(HandStage.HolecardsDeal);
         }
         // Deal Holecards
         else if (hs == HandStage.HolecardsDeal) {
             _dealHolecards();
-            handStage = HandStage.PreflopBetting;
-            _transitionHandStage(HandStage.PreflopBetting);
-            return;
+            return _transitionHandStage(HandStage.PreflopBetting);
         }
         // Preflop Betting
         else if (hs == HandStage.PreflopBetting) {
             if (_handStageOverCheck() || allFolded() || allIn()) {
                 _nextStreet(false);
-                handStage = HandStage.FlopDeal;
-                _transitionHandStage(HandStage.FlopDeal);
+                return _transitionHandStage(HandStage.FlopDeal);
             }
-            return;
+            return hs;
         }
         // Deal Flop
         else if (hs == HandStage.FlopDeal) {
             _dealFlop();
-            handStage = HandStage.FlopBetting;
-            _transitionHandStage(HandStage.FlopBetting);
-            return;
+            return _transitionHandStage(HandStage.FlopBetting);
         }
         // Flop Betting
         else if (hs == HandStage.FlopBetting) {
             if (_handStageOverCheck() || allFolded() || allIn()) {
                 _nextStreet(false);
-                handStage = HandStage.TurnDeal;
-                _transitionHandStage(HandStage.TurnDeal);
+                return _transitionHandStage(HandStage.TurnDeal);
             }
-            return;
+            return hs;
         }
         // Deal Turn
         else if (hs == HandStage.TurnDeal) {
             _dealTurn();
-            handStage = HandStage.TurnBetting;
-            _transitionHandStage(HandStage.TurnBetting);
-            return;
+            return _transitionHandStage(HandStage.TurnBetting);
         }
         // Turn Betting
         else if (hs == HandStage.TurnBetting) {
             if (_handStageOverCheck() || allFolded() || allIn()) {
                 _nextStreet(false);
-                handStage = HandStage.RiverDeal;
-                _transitionHandStage(HandStage.RiverDeal);
+                return _transitionHandStage(HandStage.RiverDeal);
             }
-            return;
+            return hs;
         }
         // Deal River
         else if (hs == HandStage.RiverDeal) {
             _dealRiver();
-            handStage = HandStage.RiverBetting;
-            _transitionHandStage(HandStage.RiverBetting);
-            return;
+            return _transitionHandStage(HandStage.RiverBetting);
         }
         // River Betting
         else if (hs == HandStage.RiverBetting) {
             if (_handStageOverCheck() || allFolded() || allIn()) {
                 // Want to run this a final time to get the final bets calculated
                 _nextStreet(true);
-                handStage = HandStage.Showdown;
-                _transitionHandStage(HandStage.Showdown);
+                return _transitionHandStage(HandStage.Showdown);
             }
-            return;
+            return hs;
         }
         // Showdown
         else if (hs == HandStage.Showdown) {
             // If only one player remains, nobody needs to call 'showCards'
             bool skipShowCards = _showdownCheck();
             if (skipShowCards) {
-                handStage = HandStage.Settle;
-                _transitionHandStage(HandStage.Settle);
+                return _transitionHandStage(HandStage.Settle);
             }
-            return;
+            return hs;
         }
         // Settle Stage
         else if (hs == HandStage.Settle) {
@@ -445,9 +428,10 @@ contract PokerTable is PokerLogic {
             _settle(pots);
             _nextHand();
             // Reset to post blinds stage
-            handStage = HandStage.SBPostStage;
-            return;
+            return HandStage.SBPostStage;
         }
+        // This will never get hit
+        return hs;
     }
 
     function takeAction(
@@ -510,7 +494,7 @@ contract PokerTable is PokerLogic {
             false
         );
 
-        _transitionHandStage(handStage);
+        handStage = _transitionHandStage(handStage);
     }
 
     function showCards(
@@ -544,7 +528,7 @@ contract PokerTable is PokerLogic {
 
         // call to increment handStage if it's last player!
         if (_handStageOverCheck()) {
-            _transitionHandStage(HandStage.Settle);
+            handStage = _transitionHandStage(HandStage.Settle);
         }
     }
 
