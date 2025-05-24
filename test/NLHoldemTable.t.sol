@@ -4,7 +4,7 @@ pragma solidity ^0.8.13;
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
 import {EnumsAndActions} from "../src/EnumsAndActions.sol";
-import {PokerTable} from "../src/PokerTable.sol";
+import {NLHoldemTable} from "../src/NLHoldemTable.sol";
 
 contract MockLookupTables {
     function lookupFlush(uint32) public pure returns (uint16) {
@@ -17,7 +17,7 @@ contract MockLookupTables {
 }
 
 // Contract with all internal methods exposed
-contract PokerTableHarness is PokerTable {
+contract NLHoldemTableHarness is NLHoldemTable {
     constructor(
         uint _tableId,
         uint _smallBlind,
@@ -27,7 +27,7 @@ contract PokerTableHarness is PokerTable {
         uint8 _numSeats,
         address _lookupTableAddr
     )
-        PokerTable(
+        NLHoldemTable(
             _tableId,
             _smallBlind,
             _bigBlind,
@@ -37,10 +37,28 @@ contract PokerTableHarness is PokerTable {
             _lookupTableAddr
         )
     {}
+
+    function setPlrPostedBlinds() public {
+        for (uint8 i = 0; i < plrPostedBlinds.length; i++) {
+            plrPostedBlinds[i] = int8(numSeats);
+        }
+    }
+
+    function setWhoseTurn(uint8 seatI) public {
+        whoseTurn = seatI;
+    }
+
+    function getWhoseTurn() public view returns (uint8) {
+        return whoseTurn;
+    }
+
+    function exposed_recomputeInHand() public {
+        _recomputeInHand();
+    }
 }
 
-contract TestPokerTable is Test {
-    function deploy() internal returns (PokerTableHarness) {
+contract TestNLHoldemTable is Test {
+    function deploy() internal returns (NLHoldemTableHarness) {
         MockLookupTables mockLookupTables = new MockLookupTables();
         uint tableId = 0;
         uint smallBlind = 1;
@@ -48,7 +66,7 @@ contract TestPokerTable is Test {
         uint minBuyin = 20;
         uint maxBuyin = 200;
         uint8 numPlayers = 6;
-        PokerTableHarness pth = new PokerTableHarness(
+        NLHoldemTableHarness pth = new NLHoldemTableHarness(
             tableId,
             smallBlind,
             bigBlind,
@@ -67,7 +85,7 @@ contract TestPokerTable is Test {
 
     function test_joinTable() public {
         // Deploy the contract
-        PokerTableHarness pth = deploy();
+        NLHoldemTableHarness pth = deploy();
 
         // Check that seat 2 is initially empty
         uint8 seatI = 2;
@@ -98,7 +116,7 @@ contract TestPokerTable is Test {
 
     function test_noBadJoinTables() public {
         // Deploy the contract
-        PokerTableHarness pth = deploy();
+        NLHoldemTableHarness pth = deploy();
 
         // Join at a seat that is not 0
         address player1 = address(0x123);
@@ -140,7 +158,7 @@ contract TestPokerTable is Test {
 
     function test_leaveTable() public {
         // Deploy the contract
-        PokerTableHarness pth = deploy();
+        NLHoldemTableHarness pth = deploy();
 
         // Join the table at seat 0
         address plrAddr = address(0x123);
@@ -169,7 +187,7 @@ contract TestPokerTable is Test {
 
     function test_rebuy() public {
         // Deploy the contract
-        PokerTableHarness pth = deploy();
+        NLHoldemTableHarness pth = deploy();
 
         // Join the table at seat 0
         address plrAddr = address(0x123);
@@ -195,7 +213,7 @@ contract TestPokerTable is Test {
 
     function test_postBlinds() public {
         // Deploy the contract
-        PokerTableHarness pth = deploy();
+        NLHoldemTableHarness pth = deploy();
 
         // Set up players
         address p0 = address(0x123);
@@ -252,7 +270,7 @@ contract TestPokerTable is Test {
 
     function test_foldPreflop2p() public {
         // Deploy the contract
-        PokerTableHarness pth = deploy();
+        NLHoldemTableHarness pth = deploy();
 
         // Set up players
         address p0 = address(0x123);
@@ -299,7 +317,7 @@ contract TestPokerTable is Test {
 
     function test_foldPreflop3p() public {
         // Deploy the contract
-        PokerTableHarness pth = deploy();
+        NLHoldemTableHarness pth = deploy();
 
         // Set up players
         address p0 = address(0x123);
@@ -309,12 +327,15 @@ contract TestPokerTable is Test {
         // Join table
         vm.prank(p0);
         pth.joinTable(0, p0, 100, false);
-
         vm.prank(p1);
         pth.joinTable(1, p1, 100, false);
-
         vm.prank(p2);
         pth.joinTable(2, p2, 100, false);
+
+        // Have to manually make state look like an ongoing hand
+        pth.setPlrPostedBlinds();
+        pth.setWhoseTurn(1);
+        pth.exposed_recomputeInHand();
 
         // Post blinds
         vm.prank(p1);
@@ -351,7 +372,7 @@ contract TestPokerTable is Test {
 
     function test_basic2p() public {
         // Deploy the contract
-        PokerTableHarness pth = deploy();
+        NLHoldemTableHarness pth = deploy();
 
         // Set up players
         address p0 = address(0x123);
@@ -453,7 +474,7 @@ contract TestPokerTable is Test {
 
     function test_thirdHand() public {
         // Make sure button resets to 0 on third hand
-        PokerTableHarness pth = deploy();
+        NLHoldemTableHarness pth = deploy();
 
         // Set up players
         address p0 = address(0x123);
@@ -505,7 +526,7 @@ contract TestPokerTable is Test {
 
     function test_integration2pShowdown() public {
         // Deploy the contract
-        PokerTableHarness pth = deploy();
+        NLHoldemTableHarness pth = deploy();
 
         // Set up players
         address p0 = address(0x123);
@@ -624,7 +645,7 @@ contract TestPokerTable is Test {
 
     function test_integration2pFold() public {
         // Deploy the contract
-        PokerTableHarness pth = deploy();
+        NLHoldemTableHarness pth = deploy();
 
         // Set up players
         address p0 = address(0x123);
@@ -670,7 +691,7 @@ contract TestPokerTable is Test {
 
     function test_integration2pAllIn() public {
         // Deploy the contract
-        PokerTableHarness pth = deploy();
+        NLHoldemTableHarness pth = deploy();
 
         // Set up players
         address p0 = address(0x123);
@@ -732,7 +753,7 @@ contract TestPokerTable is Test {
 
     function test_integration3pShowdown() public {
         // Deploy the contract
-        PokerTableHarness pth = deploy();
+        NLHoldemTableHarness pth = deploy();
 
         // Set up players
         address p0 = address(0x123);
@@ -742,12 +763,15 @@ contract TestPokerTable is Test {
         // Join table
         vm.prank(p0);
         pth.joinTable(0, p0, 100, false);
-
         vm.prank(p1);
         pth.joinTable(1, p1, 100, false);
-
         vm.prank(p2);
         pth.joinTable(2, p2, 100, false);
+
+        // Have to manually make state look like an ongoing hand
+        pth.setPlrPostedBlinds();
+        pth.setWhoseTurn(1);
+        pth.exposed_recomputeInHand();
 
         // Post blinds and initial betting
         vm.prank(p1);
@@ -858,7 +882,7 @@ contract TestPokerTable is Test {
 
     function test_integration3pOneFold() public {
         // Deploy the contract
-        PokerTableHarness pth = deploy();
+        NLHoldemTableHarness pth = deploy();
 
         // Set up players
         address p0 = address(0x123);
@@ -869,12 +893,15 @@ contract TestPokerTable is Test {
         // P2 joins first to make it so p0 is SB
         vm.prank(p2);
         pth.joinTable(2, p2, 100, false);
-
         vm.prank(p0);
         pth.joinTable(0, p0, 100, false);
-
         vm.prank(p1);
         pth.joinTable(1, p1, 100, false);
+
+        // Have to manually make state look like an ongoing hand
+        pth.setPlrPostedBlinds();
+        pth.setWhoseTurn(0);
+        pth.exposed_recomputeInHand();
 
         // Post blinds and initial betting
         vm.prank(p0);
@@ -984,7 +1011,7 @@ contract TestPokerTable is Test {
     }
 
     function test_integration3pTwoFolds() public {
-        PokerTableHarness pth = deploy();
+        NLHoldemTableHarness pth = deploy();
 
         address p0 = address(0x123);
         address p1 = address(0x456);
@@ -997,6 +1024,11 @@ contract TestPokerTable is Test {
         pth.joinTable(1, p1, 100, false);
         vm.prank(p2);
         pth.joinTable(2, p2, 100, false);
+
+        // Have to manually make state look like an ongoing hand
+        pth.setPlrPostedBlinds();
+        pth.setWhoseTurn(1);
+        pth.exposed_recomputeInHand();
 
         // Post blinds and initial betting
         vm.prank(p1);
@@ -1055,7 +1087,7 @@ contract TestPokerTable is Test {
     }
 
     function test_integration3pAllIn() public {
-        PokerTableHarness pth = deploy();
+        NLHoldemTableHarness pth = deploy();
 
         address p0 = address(0x123);
         address p1 = address(0x456);
@@ -1068,6 +1100,11 @@ contract TestPokerTable is Test {
         pth.joinTable(0, p0, 100, false);
         vm.prank(p1);
         pth.joinTable(1, p1, 100, false);
+
+        // Have to manually make state look like an ongoing hand
+        pth.setPlrPostedBlinds();
+        pth.setWhoseTurn(0);
+        pth.exposed_recomputeInHand();
 
         // Post blinds and initial betting
         vm.prank(p0);
@@ -1133,7 +1170,7 @@ contract TestPokerTable is Test {
     }
 
     function test_integration3pWeirdAllIn() public {
-        PokerTableHarness pth = deploy();
+        NLHoldemTableHarness pth = deploy();
 
         address p0 = address(0x123);
         address p1 = address(0x456);
@@ -1148,6 +1185,11 @@ contract TestPokerTable is Test {
         pth.joinTable(1, p1, 100, false);
         vm.prank(p2);
         pth.joinTable(2, p2, 50, false);
+
+        // Have to manually make state look like an ongoing hand
+        pth.setPlrPostedBlinds();
+        pth.setWhoseTurn(0);
+        pth.exposed_recomputeInHand();
 
         vm.prank(p0);
         pth.takeAction(EnumsAndActions.ActionType.SBPost, 0, 1);
@@ -1222,7 +1264,7 @@ contract TestPokerTable is Test {
     }
 
     function test_integration3pWeirdAllInDifferentStreets() public {
-        PokerTableHarness pth = deploy();
+        NLHoldemTableHarness pth = deploy();
 
         address p0 = address(0x123);
         address p1 = address(0x456);
@@ -1237,6 +1279,11 @@ contract TestPokerTable is Test {
         pth.joinTable(1, p1, 100, false);
         vm.prank(p2);
         pth.joinTable(2, p2, 50, false);
+
+        // Have to manually make state look like an ongoing hand
+        pth.setPlrPostedBlinds();
+        pth.setWhoseTurn(0);
+        pth.exposed_recomputeInHand();
 
         vm.prank(p0);
         pth.takeAction(EnumsAndActions.ActionType.SBPost, 0, 1);
@@ -1317,7 +1364,7 @@ contract TestPokerTable is Test {
     }
 
     function test_integration2pFoldTwoHands() public {
-        PokerTableHarness pth = deploy();
+        NLHoldemTableHarness pth = deploy();
 
         address p0 = address(0x123);
         address p1 = address(0x456);
@@ -1344,6 +1391,7 @@ contract TestPokerTable is Test {
             uint(EnumsAndActions.HandStage.SBPostStage),
             "Bad hand stage"
         );
+
         assertEq(pth.plrStack(0), 99);
         assertEq(pth.plrStack(1), 101);
         assertEq(pth.button(), 1, "Bad button");
@@ -1364,16 +1412,16 @@ contract TestPokerTable is Test {
             uint(pth.handStage()),
             uint(EnumsAndActions.HandStage.SBPostStage)
         );
+
         assertEq(pth.plrStack(0), 100);
         assertEq(pth.plrStack(1), 100);
+
         assertTrue(pth.plrInHand(0));
         assertTrue(pth.plrInHand(1));
-        // assertFalse(pth.plrSittingOut(0));
-        // assertFalse(pth.plrSittingOut(1));
     }
 
     function test_integration3pOpenFold() public {
-        PokerTableHarness pth = deploy();
+        NLHoldemTableHarness pth = deploy();
 
         address p0 = address(0x123);
         address p1 = address(0x456);
@@ -1386,6 +1434,10 @@ contract TestPokerTable is Test {
         pth.joinTable(0, p0, 200, false);
         vm.prank(p1);
         pth.joinTable(1, p1, 100, false);
+        // Have to manually make state look like an ongoing hand
+        pth.setPlrPostedBlinds();
+        pth.setWhoseTurn(0);
+        pth.exposed_recomputeInHand();
 
         // Post blinds and initial betting
         vm.prank(p0);
@@ -1440,5 +1492,295 @@ contract TestPokerTable is Test {
 
         // P0 folded, so P1's turn
         assertEq(pth.whoseTurn(), 1);
+    }
+
+    function test_sitOutAfterSBPost() public {
+        NLHoldemTableHarness pth = deploy();
+
+        address p0 = address(0x123);
+        address p1 = address(0x456);
+        address p2 = address(0x789);
+
+        // Join table with 3 players
+        vm.prank(p0);
+        pth.joinTable(0, p0, 100, false);
+        vm.prank(p1);
+        pth.joinTable(1, p1, 100, false);
+        vm.prank(p2);
+        pth.joinTable(2, p2, 100, false);
+
+        // Have to manually make state look like an ongoing hand
+        pth.setPlrPostedBlinds();
+        pth.setWhoseTurn(0);
+        pth.exposed_recomputeInHand();
+
+        // SB posts
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.SBPost, 0, 1);
+
+        // BB sits out
+        vm.prank(p1);
+        pth.sitIn(1, false);
+
+        // Check that it's now p2's turn to post BB
+        assertEq(pth.whoseTurn(), 2, "Should be p2's turn to post BB");
+
+        // p2 posts BB
+        vm.prank(p2);
+        pth.takeAction(EnumsAndActions.ActionType.BBPost, 2, 2);
+
+        // Check that p0 is now in hand and it's their turn to act
+        assertEq(pth.whoseTurn(), 0, "Should be p0's turn to act");
+        assertTrue(pth.plrInHand(0), "p0 should be in hand");
+        assertFalse(pth.plrInHand(1), "p1 should not be in hand");
+        assertTrue(pth.plrInHand(2), "p2 should be in hand");
+
+        // p0 folds
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.Fold, 0, 0);
+
+        // Check that p2 wins the pot
+        assertEq(pth.plrStack(0), 99, "p0 should have 99 chips after folding");
+        assertEq(
+            pth.plrStack(1),
+            100,
+            "p1 should have 100 chips after sitting out"
+        );
+        assertEq(
+            pth.plrStack(2),
+            101,
+            "p2 should have 101 chips after winning"
+        );
+    }
+
+    function test_skipSBPost3p() public {
+        NLHoldemTableHarness pth = deploy();
+
+        address p0 = address(0x123);
+        address p1 = address(0x456);
+        address p2 = address(0x789);
+
+        // Join table with 3 players
+        vm.prank(p0);
+        pth.joinTable(0, p0, 100, false);
+        vm.prank(p1);
+        pth.joinTable(1, p1, 100, false);
+        vm.prank(p2);
+        pth.joinTable(2, p2, 100, false);
+
+        // Have to manually make state look like an ongoing hand
+        pth.setPlrPostedBlinds();
+        pth.setWhoseTurn(0);
+        pth.exposed_recomputeInHand();
+
+        // SB sits out
+        vm.prank(p0);
+        pth.sitIn(0, false);
+
+        // Check that it's now p1's turn to post BB
+        assertEq(pth.whoseTurn(), 1, "Should be p1's turn to post BB");
+
+        // p1 posts BB
+        vm.prank(p1);
+        pth.takeAction(EnumsAndActions.ActionType.BBPost, 1, 2);
+
+        // Check that p2 is now in hand and it's their turn to act
+        assertEq(pth.whoseTurn(), 2, "Should be p2's turn to act");
+        assertFalse(pth.plrInHand(0), "p0 should not be in hand");
+        assertTrue(pth.plrInHand(1), "p1 should be in hand");
+        assertTrue(pth.plrInHand(2), "p2 should be in hand");
+
+        // p2 folds
+        vm.prank(p2);
+        pth.takeAction(EnumsAndActions.ActionType.Fold, 2, 0);
+
+        // Check that p1 wins the pot
+        assertEq(
+            pth.plrStack(0),
+            100,
+            "p0 should have 100 chips after sitting out"
+        );
+        assertEq(
+            pth.plrStack(1),
+            100,
+            "p1 should have 101 chips after winning"
+        );
+        assertEq(
+            pth.plrStack(2),
+            100,
+            "p2 should have 100 chips after folding"
+        );
+    }
+
+    function test_mustPostBlindsFirst() public {
+        NLHoldemTableHarness pth = deploy();
+
+        address p0 = address(0x123);
+        address p1 = address(0x456);
+        address p2 = address(0x789);
+
+        vm.prank(p0);
+        pth.joinTable(0, p0, 200, false);
+        vm.prank(p1);
+        pth.joinTable(1, p1, 100, false);
+        vm.prank(p2);
+        pth.joinTable(2, p2, 50, false);
+
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.SBPost, 0, 1);
+
+        vm.prank(p1);
+        pth.takeAction(EnumsAndActions.ActionType.BBPost, 1, 2);
+
+        // Should only be two players!
+        // This should FAIL!
+        vm.expectRevert();
+        vm.prank(p2);
+        pth.takeAction(EnumsAndActions.ActionType.Call, 2, 0);
+
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.Fold, 0, 0);
+        //Hand is over - now next hand they should be able to post, and it should be 3 ways
+
+        uint8 whoseTurn = pth.getWhoseTurn();
+        assertEq(uint(whoseTurn), 1);
+
+        vm.prank(p1);
+        pth.takeAction(EnumsAndActions.ActionType.SBPost, 1, 1);
+
+        vm.prank(p2);
+        pth.takeAction(EnumsAndActions.ActionType.BBPost, 2, 2);
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.Call, 0, 0);
+
+        // SB's turn, still preflop betting stag
+        assertEq(
+            uint(pth.handStage()),
+            uint(EnumsAndActions.HandStage.PreflopBetting)
+        );
+    }
+
+    function test_sitOutAfterBothBlinds() public {
+        NLHoldemTableHarness pth = deploy();
+
+        address p0 = address(0x123);
+        address p1 = address(0x456);
+
+        // Join table with 2 players
+        vm.prank(p0);
+        pth.joinTable(0, p0, 100, false);
+        vm.prank(p1);
+        pth.joinTable(1, p1, 100, false);
+
+        // Have to manually make state look like an ongoing hand
+        // pth.setPlrPostedBlinds();
+        // pth.setWhoseTurn(0);
+        // pth.exposed_recomputeInHand();
+
+        // First hand
+        // p0 posts SB
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.SBPost, 0, 1);
+
+        // p1 posts BB
+        vm.prank(p1);
+        pth.takeAction(EnumsAndActions.ActionType.BBPost, 1, 2);
+
+        // end hand...
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.Fold, 0, 0);
+
+        // Second hand
+        // p1 posts SB
+        vm.prank(p1);
+        pth.takeAction(EnumsAndActions.ActionType.SBPost, 1, 1);
+
+        // p0 posts BB
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.BBPost, 0, 2);
+
+        // p1 calls
+        vm.prank(p1);
+        pth.takeAction(EnumsAndActions.ActionType.Fold, 1, 0);
+
+        // p1 sits out before third hand
+        vm.prank(p1);
+        pth.sitIn(1, false);
+
+        // Check that p1 has BB credits (can play next hand)
+        assertEq(
+            pth.plrPostedBlinds(1),
+            1,
+            "p1 should have BB credits after posting both blinds"
+        );
+
+        // p1 sits back in
+        vm.prank(p1);
+        pth.sitIn(1, true);
+
+        // Verify p1 is in hand
+        assertTrue(
+            pth.plrInHand(1),
+            "p1 should be in hand after sitting back in"
+        );
+
+        // Third hand starts
+        // p0 posts SB
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.SBPost, 0, 1);
+
+        // p1 posts BB
+        vm.prank(p1);
+        pth.takeAction(EnumsAndActions.ActionType.BBPost, 1, 2);
+
+        // Verify p1 is still in hand
+        assertTrue(
+            pth.plrInHand(1),
+            "p1 should still be in hand after posting BB"
+        );
+    }
+
+    function test_sitOutAfterPlayingHand() public {
+        NLHoldemTableHarness pth = deploy();
+
+        address p0 = address(0x123);
+        address p1 = address(0x456);
+
+        // Join table with 2 players
+        vm.prank(p0);
+        pth.joinTable(0, p0, 100, false);
+        vm.prank(p1);
+        pth.joinTable(1, p1, 100, false);
+
+        // First hand
+        // p0 posts SB
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.SBPost, 0, 1);
+
+        // p1 posts BB
+        vm.prank(p1);
+        pth.takeAction(EnumsAndActions.ActionType.BBPost, 1, 2);
+
+        // p0 calls
+        vm.prank(p0);
+        pth.takeAction(EnumsAndActions.ActionType.Fold, 0, 0);
+
+        // Second hand starts
+        // p1 sits out before posting SB
+        vm.prank(p1);
+        pth.sitIn(1, false);
+
+        // Check that p1 has no BB credits (can't play next hand)
+        assertEq(
+            pth.plrPostedBlinds(1),
+            0,
+            "p1 should have no BB credits after sitting out before posting SB"
+        );
+
+        // Verify p1 is not in hand
+        assertFalse(
+            pth.plrInHand(1),
+            "p1 should not be in hand after sitting out"
+        );
     }
 }

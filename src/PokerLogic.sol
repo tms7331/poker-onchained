@@ -172,7 +172,7 @@ contract PokerLogic is EnumsAndActions {
     function _incrementWhoseTurn(
         uint8 numSeats,
         uint8 whoseTurn,
-        bool[9] memory inHand,
+        bool[9] memory active,
         uint[9] memory stacks,
         int8 closingActionCount,
         bool isShowdown
@@ -183,8 +183,9 @@ contract PokerLogic is EnumsAndActions {
             uint256 seatI = (whoseTurn + i) % numSeats;
             closingActionCount++;
 
+            // 'active' can be inHand or sittingIn
             // The player must be in the hand and have some funds
-            if (inHand[seatI] && (isShowdown || stacks[seatI] > 0)) {
+            if (active[seatI] && (isShowdown || stacks[seatI] > 0)) {
                 whoseTurn = uint8(seatI);
                 // incremented = true;
                 break;
@@ -199,28 +200,52 @@ contract PokerLogic is EnumsAndActions {
     }
 
     function _incrementButton(
-        uint8 button,
-        bool[9] memory plrSittingOut,
+        uint8 numSeats,
+        uint8 lastPostedBB,
+        uint bigBlind,
+        bool[9] memory plrSittingIn,
         uint[9] memory stacks
-    ) internal pure returns (uint8) {
+    ) internal pure returns (uint8, uint8) {
         // TODO - what if there's only one player?
-        // We'll iterate through seats and never break...
-        uint8 numSeats = uint8(plrSittingOut.length);
-
         bool incremented = false;
-        for (uint256 i = 1; i <= numSeats; i++) {
-            uint256 seatI = (button + i) % numSeats;
+        uint8 incCount = 0;
+        uint8 nextBB;
+        uint8 seatI;
+        for (uint8 i = 1; i <= numSeats; i++) {
+            seatI = (lastPostedBB + i) % numSeats;
+            incCount++;
             // The player must be active and have some funds
-            if (!plrSittingOut[seatI] && stacks[seatI] > 0) {
-                button = uint8(seatI);
+            if (plrSittingIn[seatI] && stacks[seatI] >= bigBlind) {
+                nextBB = uint8(seatI);
                 incremented = true;
                 break;
             }
         }
+        // Now count back by 2 for button
+        uint8 counter = 0;
+        uint8 button;
+        for (uint8 i = 1; i <= numSeats; i++) {
+            // For 6 players, want to add: 5, 4, 3, 2, 1, 0
+            seatI = uint8((nextBB + (numSeats - i)) % numSeats);
+            if (plrSittingIn[seatI] && stacks[seatI] >= bigBlind) {
+                counter++;
+                if (counter == 1) {
+                    button = seatI;
+                    // If we've looped back around to the button, only two players
+                    // So keep the button the same
+                } else if (counter == 2) {
+                    if (seatI != nextBB) {
+                        button = seatI;
+                    }
+                    break;
+                }
+            }
+        }
+
         // Sanity check - we can handle this case but don't let it happen
         // without thinking through it
         require(incremented, "Failed to increment button!");
 
-        return button;
+        return (button, incCount);
     }
 }

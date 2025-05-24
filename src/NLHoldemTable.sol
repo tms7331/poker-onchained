@@ -5,7 +5,30 @@ import {PokerLogic} from "./PokerLogic.sol";
 import {CardDealer} from "./CardDealer.sol";
 import {LookupTables} from "./LookupTables.sol";
 
-contract PokerTable is PokerLogic {
+contract NLHoldemTable is PokerLogic {
+    event PlayerJoined(
+        uint8 indexed seatI,
+        address indexed playerAddr,
+        uint depositAmount,
+        bool autoPost
+    );
+    event PlayerLeft(uint8 indexed seatI, address indexed playerAddr);
+    event PlayerRebought(uint8 indexed seatI, uint256 rebuyAmount);
+    event PlayerSatIn(uint8 indexed seatI, bool sittingIn);
+    event ActionTaken(
+        uint8 indexed seatI,
+        ActionType actionType,
+        uint256 amount
+    );
+    event CardsShown(
+        uint8 indexed seatI,
+        bool muck,
+        uint8 card0,
+        uint8 card1,
+        uint16 showdownVal
+    );
+    event HandStageChanged(HandStage newStage);
+
     // Core table values...
     uint public tableId;
     uint public handId;
@@ -21,10 +44,13 @@ contract PokerTable is PokerLogic {
     address[9] public plrOwnerAddr;
     uint[9] public plrStack;
     bool[9] public plrInHand;
-    bool[9] public plrSittingOut;
+    bool[9] public plrSittingIn;
     bool[9] public plrAutoPost;
     uint[9] public plrBetStreet;
     uint[9] public plrBetHand;
+
+    int[9] public plrPostedBlinds;
+
     uint16[9] public plrShowdownVal;
     // Temporary solution - holecards fully public until we integrate coprocessor
     uint8[9] public plrHolecardsA;
@@ -41,13 +67,14 @@ contract PokerTable is PokerLogic {
     // Table data we need:
     HandStage public handStage;
     uint8 public button;
+    uint8 public lastPostedBB;
     uint8 public whoseTurn;
-    uint8 public closingActionCount;
-    // The largest amount any player has put in on a given street
-    uint public maxBetThisStreet;
+    // Last (actually largest) raise amount: if betting was 5->10->27 it would be 17
     uint public lastRaiseAmount;
-
-    bool public actionComplete;
+    uint8 private closingActionCount;
+    // The largest amount any player has put in on a given street 5->10->27 it would be 27
+    uint private maxBetThisStreet;
+    bool private actionComplete;
 
     uint32[] private primes = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41];
 
@@ -92,7 +119,7 @@ contract PokerTable is PokerLogic {
         bool autoPost
     ) external {
         require(seatI >= 0 && seatI < numSeats, "Invalid seat!");
-        // TODO - think through edge cases if they join with address of 0, maybe it's ok
+        // This would mess up some of the inHand logic and is nonsense anyways
         require(actionAddr != address(0), "Invalid action address!");
         // Seat must be available and player must not be already joined
         require(plrActionAddr[seatI] == address(0), "Seat already taken!");
@@ -102,6 +129,8 @@ contract PokerTable is PokerLogic {
         }
         require(_depositOk(0, depositAmount));
 
+        plrPostedBlinds[seatI] = 0;
+
         plrActionAddr[seatI] = actionAddr;
         plrOwnerAddr[seatI] = msg.sender;
         plrStack[seatI] = depositAmount;
@@ -110,35 +139,22 @@ contract PokerTable is PokerLogic {
         plrAutoPost[seatI] = autoPost;
         plrBetStreet[seatI] = 0;
         plrShowdownVal[seatI] = 0;
-
-        // TODO - need to initialize whoseTurn and button properly
-        // HandStage handStage = _getTblHandStage(tblDataId);
-        // TODO - more complicated than this!  In most situations they can't join until they're posting the BB!
-        if (handStage != HandStage.SBPostStage) {
-            plrInHand[seatI] = false;
-        } else {
-            plrInHand[seatI] = true;
-            // TODO - any better way to fix whoseTurn?
-            if (_getPlayerCount() == 3) {
-                (whoseTurn, ) = _incrementWhoseTurn(
-                    numSeats,
-                    button,
-                    plrInHand,
-                    plrStack,
-                    int8(closingActionCount),
-                    false
-                );
-            }
-        }
+        plrSittingIn[seatI] = true;
 
         // Assign button if it's the first player
         if (_getPlayerCount() == 1) {
             button = seatI;
             whoseTurn = seatI;
+            plrInHand[seatI] = true;
+            // Give them BB credits
+            plrPostedBlinds[seatI] = int8(numSeats);
         }
+        _recomputeInHand();
+
+        emit PlayerJoined(seatI, actionAddr, depositAmount, autoPost);
     }
 
-    function leaveTable(uint256 seatI) public {
+    function leaveTable(uint8 seatI) external {
         require(plrOwnerAddr[seatI] == msg.sender, "Player not at seat!");
 
         plrActionAddr[seatI] = address(0);
@@ -146,26 +162,84 @@ contract PokerTable is PokerLogic {
 
         // TODO - send them their funds
         plrStack[seatI] = 0;
+
+        // We need to ensure they've sat out before calculating button advance logic
+        _sitIn(seatI, false);
+
         //uint256 amountStack = plrStack[seatI];
         //(bool success, ) = msg.sender.call{value: amountStack}("");
         //require(success, "Transfer failed");
+
+        emit PlayerLeft(seatI, msg.sender);
     }
 
-    function rebuy(uint256 seatI, uint256 rebuyAmount) public {
+    function rebuy(uint8 seatI, uint256 rebuyAmount) external {
         require(plrOwnerAddr[seatI] == msg.sender, "Player not at seat!");
         require(_depositOk(plrStack[seatI], rebuyAmount));
         plrStack[seatI] += rebuyAmount;
+
+        emit PlayerRebought(seatI, rebuyAmount);
     }
 
-    function sitInOut(uint256 seatI, bool sitOut) public {
+    function sitIn(uint8 seatI, bool sittingIn) external {
         require(plrOwnerAddr[seatI] == msg.sender, "Player not at seat!");
-        plrSittingOut[seatI] = sitOut;
+        _sitIn(seatI, sittingIn);
+    }
+
+    function _sitIn(uint8 seatI, bool sittingIn) private {
+        // require(plrInHand[seatI] == false, "Must fold before sitting out!");
+        if (sittingIn) {
+            require(plrStack[seatI] >= bigBlind, "Stack too small!");
+        }
+        plrSittingIn[seatI] = sittingIn;
+
+        // If they sit out when it's their turn to post, we need to handle it
+        if (!sittingIn) {
+            if (handStage == HandStage.SBPostStage && whoseTurn == seatI) {
+                // We need to be sure they cannot sit in next hand without having posted the SB
+                plrPostedBlinds[seatI] = 0;
+                // And they are out of the hand!
+                plrInHand[seatI] = false;
+                // And if they sit out as SB, we are saying there is NO SB for the hand
+                // So immediately transition to BB stage
+                (whoseTurn, closingActionCount) = _incrementWhoseTurn(
+                    numSeats,
+                    whoseTurn,
+                    plrSittingIn,
+                    plrStack,
+                    -1,
+                    false
+                );
+                handStage = _transitionHandStage(HandStage.SBPostStage);
+            } else if (
+                handStage == HandStage.BBPostStage && whoseTurn == seatI
+            ) {
+                // If they sit out as BB, advance whoseTurn to next player
+                (whoseTurn, closingActionCount) = _incrementWhoseTurn(
+                    numSeats,
+                    whoseTurn,
+                    plrSittingIn,
+                    plrStack,
+                    -1,
+                    false
+                );
+                // And they are out of the hand!
+                plrInHand[seatI] = false;
+
+                // TODO - think through this:
+                // if this player sitting out changed it to two players, does that
+                // mess with button?
+            }
+        }
+        emit PlayerSatIn(seatI, sittingIn);
     }
 
     function _getPlayerCount() internal view returns (uint256) {
+        // TODO - better understand how we're using this
         uint256 count = 0;
         for (uint256 i = 0; i < numSeats; i++) {
-            if (plrActionAddr[i] != address(0)) {
+            // Do we only need to check for plrSittingIn?
+            if (plrActionAddr[i] != address(0) && plrSittingIn[i]) {
                 count++;
             }
         }
@@ -181,7 +255,6 @@ contract PokerTable is PokerLogic {
             int8(closingActionCount),
             isShowdown
         );
-
         closingActionCount = 0;
         maxBetThisStreet = 0;
         lastRaiseAmount = 0;
@@ -190,6 +263,21 @@ contract PokerTable is PokerLogic {
         for (uint256 i = 0; i < numSeats; i++) {
             plrBetHand[i] += plrBetStreet[i];
             plrBetStreet[i] = 0;
+        }
+    }
+
+    function _recomputeInHand() internal {
+        // SB - always in hand
+        // BB - always in hand
+        // Others - MUST have posted BB in last round to be safe
+        for (uint256 i = 0; i < numSeats; i++) {
+            if (plrActionAddr[i] != address(0)) {
+                if (plrSittingIn[i] && plrPostedBlinds[i] > 0) {
+                    plrInHand[i] = true;
+                } else {
+                    plrInHand[i] = false;
+                }
+            }
         }
     }
 
@@ -207,7 +295,7 @@ contract PokerTable is PokerLogic {
         river = 0;
 
         // Reset players
-        for (uint i = 0; i < numSeats; i++) {
+        for (uint8 i = 0; i < numSeats; i++) {
             if (plrActionAddr[i] != address(0)) {
                 plrHolecardsA[i] = 0;
                 plrHolecardsB[i] = 0;
@@ -218,21 +306,41 @@ contract PokerTable is PokerLogic {
 
                 // Handle bust and sitting out conditions
                 if (plrStack[i] < bigBlind) {
-                    plrSittingOut[i] = true;
-                }
-                if (!plrSittingOut[i]) {
-                    plrInHand[i] = true;
-                } else {
-                    plrInHand[i] = false;
+                    // plrSittingIn[i] = false;
+                    _sitIn(i, false);
                 }
             }
         }
 
-        button = _incrementButton(button, plrSittingOut, plrStack);
+        // We need to set:
+        // button - increment based on sittingIn
+        // inHand - should just be anyone who has enough "BB credits",
+        //   we will handle the scenario where the game is starting in joinTable,
+        //   and we will set inHand = true for the BB when they post
+        // whoseTurn - increment based on inHand
+
+        uint8 incCount;
+        (button, incCount) = _incrementButton(
+            numSeats,
+            lastPostedBB,
+            bigBlind,
+            plrSittingIn,
+            plrStack
+        );
+
+        for (uint8 i = 0; i < numSeats; i++) {
+            plrPostedBlinds[i] -= int8(incCount);
+        }
+
+        _recomputeInHand();
+
+        // TODO - think through this more carefully, not sure this works
         if (_getPlayerCount() == 2) {
             whoseTurn = button;
         } else {
-            (whoseTurn, ) = _incrementWhoseTurn(
+            // We should use plrInHand here because we'll have set it earlier
+            uint8 newTurn;
+            (newTurn, ) = _incrementWhoseTurn(
                 numSeats,
                 button,
                 plrInHand,
@@ -240,7 +348,9 @@ contract PokerTable is PokerLogic {
                 int8(closingActionCount),
                 false
             );
+            whoseTurn = newTurn;
         }
+
         handId++;
 
         // Have to reset the deck after each hand
@@ -349,6 +459,7 @@ contract PokerTable is PokerLogic {
     function _transitionHandStage(HandStage hs) internal returns (HandStage) {
         // Blinds
         if (hs == HandStage.SBPostStage) {
+            emit HandStageChanged(HandStage.BBPostStage);
             return HandStage.BBPostStage;
         } else if (hs == HandStage.BBPostStage) {
             return _transitionHandStage(HandStage.HolecardsDeal);
@@ -356,12 +467,14 @@ contract PokerTable is PokerLogic {
         // Deal Holecards
         else if (hs == HandStage.HolecardsDeal) {
             _dealHolecards();
+            emit HandStageChanged(HandStage.PreflopBetting);
             return _transitionHandStage(HandStage.PreflopBetting);
         }
         // Preflop Betting
         else if (hs == HandStage.PreflopBetting) {
             if (_handStageOverCheck() || actionCompleteCheck()) {
                 _nextStreet(false);
+                emit HandStageChanged(HandStage.FlopDeal);
                 return _transitionHandStage(HandStage.FlopDeal);
             }
             return hs;
@@ -369,12 +482,14 @@ contract PokerTable is PokerLogic {
         // Deal Flop
         else if (hs == HandStage.FlopDeal) {
             _dealFlop();
+            emit HandStageChanged(HandStage.FlopBetting);
             return _transitionHandStage(HandStage.FlopBetting);
         }
         // Flop Betting
         else if (hs == HandStage.FlopBetting) {
             if (_handStageOverCheck() || actionCompleteCheck()) {
                 _nextStreet(false);
+                emit HandStageChanged(HandStage.TurnDeal);
                 return _transitionHandStage(HandStage.TurnDeal);
             }
             return hs;
@@ -382,12 +497,14 @@ contract PokerTable is PokerLogic {
         // Deal Turn
         else if (hs == HandStage.TurnDeal) {
             _dealTurn();
+            emit HandStageChanged(HandStage.TurnBetting);
             return _transitionHandStage(HandStage.TurnBetting);
         }
         // Turn Betting
         else if (hs == HandStage.TurnBetting) {
             if (_handStageOverCheck() || actionCompleteCheck()) {
                 _nextStreet(false);
+                emit HandStageChanged(HandStage.RiverDeal);
                 return _transitionHandStage(HandStage.RiverDeal);
             }
             return hs;
@@ -395,6 +512,7 @@ contract PokerTable is PokerLogic {
         // Deal River
         else if (hs == HandStage.RiverDeal) {
             _dealRiver();
+            emit HandStageChanged(HandStage.RiverBetting);
             return _transitionHandStage(HandStage.RiverBetting);
         }
         // River Betting
@@ -402,6 +520,7 @@ contract PokerTable is PokerLogic {
             if (_handStageOverCheck() || actionCompleteCheck()) {
                 // Want to run this a final time to get the final bets calculated
                 _nextStreet(true);
+                emit HandStageChanged(HandStage.Showdown);
                 return _transitionHandStage(HandStage.Showdown);
             }
             return hs;
@@ -411,6 +530,7 @@ contract PokerTable is PokerLogic {
             // If only one player remains, nobody needs to call 'showCards'
             bool skipShowCards = _showdownCheck();
             if (skipShowCards) {
+                emit HandStageChanged(HandStage.Settle);
                 return _transitionHandStage(HandStage.Settle);
             }
             return hs;
@@ -421,6 +541,7 @@ contract PokerTable is PokerLogic {
             _settle(pots);
             _nextHand();
             // Reset to post blinds stage
+            emit HandStageChanged(HandStage.SBPostStage);
             return HandStage.SBPostStage;
         }
         // This will never get hit
@@ -437,17 +558,19 @@ contract PokerTable is PokerLogic {
 
         // Ensure we can only do SB and BB posts at the right time
         if (actionType == ActionType.SBPost) {
+            // Make sure we have 2 active players!
+            require(_getPlayerCount() >= 2);
             require(amount == smallBlind, "Invalid SB post amount!");
-            require(
-                handStage == HandStage.SBPostStage,
-                "Not valid betting stage!"
-            );
+            require(handStage == HandStage.SBPostStage, "Not SBBetting stage!");
         } else if (actionType == ActionType.BBPost) {
-            require(
-                handStage == HandStage.BBPostStage,
-                "Not valid betting stage!"
-            );
+            require(_getPlayerCount() >= 2);
+            lastPostedBB = seatI;
+            require(handStage == HandStage.BBPostStage, "Not BBBetting stage!");
             require(amount == bigBlind, "Invalid BB post amount!");
+            // TODO - why is it +1?  Go through math more carefully
+            plrPostedBlinds[seatI] = int8(numSeats) + 1;
+            // We have to set this to true because this can be false if they have not posted!
+            plrInHand[seatI] = true;
         } else {
             // Make sure it's not one of the other stages where we can't act
             require(
@@ -469,38 +592,45 @@ contract PokerTable is PokerLogic {
             plrInHand[seatI] = false;
         }
 
+        // TODO - we can move this logic up to the other one
         // Should either be reset or incremented
         int8 closingActionCount_;
-        if (
-            actionType == ActionType.SBPost || actionType == ActionType.BBPost
-        ) {
+        bool[9] memory active;
+        if (actionType == ActionType.SBPost) {
+            active = plrSittingIn;
             closingActionCount_ = -1;
+        } else if (actionType == ActionType.BBPost) {
+            closingActionCount_ = -1;
+            active = plrInHand;
         } else if (actionType == ActionType.Bet) {
             closingActionCount_ = 0;
+            active = plrInHand;
         } else {
             closingActionCount_ = int8(closingActionCount);
+            active = plrInHand;
         }
 
         (whoseTurn, closingActionCount) = _incrementWhoseTurn(
             numSeats,
             whoseTurn,
-            plrInHand,
+            active,
             plrStack,
             closingActionCount_,
             false
         );
 
         handStage = _transitionHandStage(handStage);
+
+        emit ActionTaken(seatI, actionType, amount);
     }
 
     function showCards(
         bool muck,
         bool isFlush,
         bool[7] memory useCards
-    ) public {
+    ) external {
         require(handStage == HandStage.Showdown, "Not showdown stage!");
-        // TODO - if only one player they should not need to show cards
-        // Fully trusting front end to feed in lookupVal, will replace with proof
+        // TODO - if only one player they should not need to show cards?
         require(plrActionAddr[whoseTurn] == msg.sender, "Not your turn!");
         if (muck) {
             // Worst possible lookupVal - think we don't have to do this since it was initialized to this
@@ -526,6 +656,15 @@ contract PokerTable is PokerLogic {
         if (_handStageOverCheck()) {
             handStage = _transitionHandStage(HandStage.Settle);
         }
+
+        // They'll have to pass cards in (in a verifiable way), for now just access
+        emit CardsShown(
+            whoseTurn,
+            muck,
+            plrHolecardsA[whoseTurn],
+            plrHolecardsB[whoseTurn],
+            plrShowdownVal[whoseTurn]
+        );
     }
 
     function _settle(Pot[] memory pots) internal {
@@ -537,7 +676,6 @@ contract PokerTable is PokerLogic {
             bool[] memory isWinner = new bool[](numSeats);
             uint256 winnerCount = 0;
             for (uint256 i = 0; i < numSeats; i++) {
-                // uint8 ev = pot.players[i] ? 1 : 0;
                 if (pot.players[i] && plrShowdownVal[i] <= winnerVal) {
                     if (plrShowdownVal[i] < winnerVal) {
                         // Ugly but we have to clear out previous winners
@@ -616,5 +754,43 @@ contract PokerTable is PokerLogic {
         // This can only happen if they passed in an invalid lookupMult!
         require(lookupVal != 0, "Lookup value is 0!");
         return lookupVal;
+    }
+
+    function reset() external {
+        // Reset player arrays
+        for (uint8 i = 0; i < 9; i++) {
+            plrActionAddr[i] = address(0);
+            plrOwnerAddr[i] = address(0);
+            plrStack[i] = 0;
+            plrInHand[i] = false;
+            plrSittingIn[i] = false;
+            plrAutoPost[i] = false;
+            plrBetStreet[i] = 0;
+            plrBetHand[i] = 0;
+            plrPostedBlinds[i] = 0;
+            plrShowdownVal[i] = 8000;
+            plrHolecardsA[i] = 0;
+            plrHolecardsB[i] = 0;
+        }
+
+        // Reset table state
+        handStage = HandStage.SBPostStage;
+        button = 0;
+        lastPostedBB = 0;
+        whoseTurn = 0;
+        closingActionCount = 0;
+        lastRaiseAmount = 0;
+        maxBetThisStreet = 0;
+        actionComplete = false;
+
+        // Reset community cards
+        flop0 = 0;
+        flop1 = 0;
+        flop2 = 0;
+        turn = 0;
+        river = 0;
+
+        // Reset card dealer
+        cardDealer.reset();
     }
 }
